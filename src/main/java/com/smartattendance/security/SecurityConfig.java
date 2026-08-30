@@ -46,9 +46,18 @@ public class SecurityConfig {
                     .includeSubDomains(true)
                     .maxAgeInSeconds(31536000))
                 .contentSecurityPolicy(csp -> csp
-                    .policyDirectives("default-src 'self'; " +
-                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.tailwindcss.com https://unpkg.com/@babel/standalone https://unpkg.com/react@18/umd/react.production.min.js https://unpkg.com/react-dom@18/umd/react-dom.production.min.js; " +
-                        "style-src 'self' 'unsafe-inline' https://unpkg.com;"))
+                    .policyDirectives(
+                        "default-src 'self' https: data: blob:; " +
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdnjs.cloudflare.com; " +
+                        "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; " +
+                        "img-src 'self' data: https: blob:; " +
+                        "font-src 'self' https://unpkg.com data:; " +
+                        "connect-src 'self' http://localhost:8080 https://vitalscan-api-y891.onrender.com https:; " +
+                        "frame-src 'self' https:; " +
+                        "object-src 'none'; " +
+                        "base-uri 'self'; " +
+                        "form-action 'self';"
+                    ))
                 .xssProtection(xss -> xss.disable()) // Rely on CSP instead of legacy X-XSS-Protection
             )
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

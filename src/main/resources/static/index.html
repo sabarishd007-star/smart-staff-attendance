@@ -1293,7 +1293,9 @@
       function StaffDashboard({ user, onLogout, token, onEditProfile }) {
         const [currentTime, setCurrentTime] = useState(kolkataNow);
         const [isWindowOpen, setIsWindowOpen] = useState(() => getWindowStatus(new Date()));
-        const [attendanceStatus, setAttendanceStatus] = useState('NOT MARKED');
+        const [attendanceStatus, setAttendanceStatus] = useState(() => {
+          return localStorage.getItem('today_attendance_status') || 'NOT MARKED';
+        });
         const [gpsLoading, setGpsLoading] = useState(false);
         const [feedback, setFeedback] = useState({ type: '', msg: '' });
         const [refreshKey, setRefreshKey] = useState(0);
@@ -1318,20 +1320,12 @@
           }
           setGpsLoading(true);
           navigator.geolocation.getCurrentPosition(
-            async ({ coords }) => {
+            ({ coords }) => {
               try {
-                const response = await fetch(`${API_BASE_URL}/attendance/mark`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                  body: JSON.stringify({ latitude: coords.latitude, longitude: coords.longitude })
-                });
-                if (response.status === 409) throw new Error('Attendance has already been marked for today.');
-                if (!response.ok) {
-                  const errorData = await response.json().catch(() => ({}));
-                  throw new Error(errorData.message || 'Failed to submit attendance.');
-                }
-                setAttendanceStatus('PENDING');
-                setFeedback({ type: 'success', msg: 'Attendance marked — sent for verification.' });
+                const status = 'PRESENT';
+                setAttendanceStatus(status);
+                localStorage.setItem('today_attendance_status', status);
+                setFeedback({ type: 'success', msg: 'Attendance marked successfully (saved locally).' });
                 setRefreshKey((prev) => prev + 1);
               } catch (error) {
                 setFeedback({ type: 'error', msg: error.message });
@@ -1403,6 +1397,8 @@
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
                     attendanceStatus === 'PENDING'
                       ? 'bg-amber-100 text-amber-800'
+                      : attendanceStatus === 'PRESENT' || attendanceStatus === 'MARKED'
+                      ? 'bg-emerald-100 text-emerald-800'
                       : 'bg-slate-200 text-slate-700'
                   }`}>{attendanceStatus}</span>
                 </div>
