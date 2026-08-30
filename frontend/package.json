@@ -1,0 +1,14 @@
+{
+  "name": "smart-staff-attendance-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontend static server for Smart Staff Attendance",
+  "scripts": {
+    "dev": "npx serve ../src/main/resources/static -p 5173",
+    "start": "npx serve ../src/main/resources/static -p 5173",
+    "build": "echo 'Frontend static resources are located in src/main/resources/static'"
+  },
+  "dependencies": {
+    "serve": "^14.2.4"
+  }
+}

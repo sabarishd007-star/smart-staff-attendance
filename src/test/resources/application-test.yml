@@ -1,0 +1,35 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=MySQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  sql:
+    init:
+      mode: never
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+    show-sql: false
+
+app:
+  jwt:
+    secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+    expiration-ms: 86400000
+  attendance:
+    timezone: Asia/Kolkata
+    window-start-hour: 5
+    window-start-minute: 0
+    window-end-hour: 16
+    window-end-minute: 0
+    enforce-time-window: false
+  rate-limit:
+    # Broad default so independent integration tests do not share a five-request bucket.
+    capacity: 100
+    tokens-per-minute: 100
+    attendance-capacity: 100
+    attendance-tokens-per-minute: 100
+  audit:
+    # H2 cannot execute the MySQL trigger. MySQL integration tests cover trigger writes.
+    database-trigger-enabled: false

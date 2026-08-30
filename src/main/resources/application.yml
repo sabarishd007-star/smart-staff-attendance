@@ -1,0 +1,53 @@
+server:
+  port: "${PORT:8080}"
+
+spring:
+  application:
+    name: smart-attendance
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:smart_attendance;DB_CLOSE_DELAY=-1;MODE=MySQL}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.h2.Driver}
+  sql:
+    init:
+      mode: always             # Run schema.sql and data.sql on startup
+      continue-on-error: true  # Ensure data.sql seeds reliably
+  jpa:
+    defer-datasource-initialization: true  # Run data.sql AFTER JPA creates tables
+    database-platform: ${SPRING_JPA_DATABASE_PLATFORM:org.hibernate.dialect.H2Dialect}
+    hibernate:
+      ddl-auto: update       # Auto-creates / updates tables from @Entity classes
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+app:
+  jwt:
+    # 256-bit Base64 encoded key
+    secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+    expiration-ms: 86400000 # 24 hours
+  attendance:
+    timezone: Asia/Kolkata
+    window-start-hour: 5
+    window-start-minute: 0
+    window-end-hour: 17
+    window-end-minute: 30
+    enforce-time-window: true
+    campus-latitude: 13.0827
+    campus-longitude: 80.2707
+    allowed-radius-meters: 500.0
+    enforce-geofence: true
+  rate-limit:
+    capacity: 100
+    tokens-per-minute: 100
+    attendance-capacity: 50
+    attendance-tokens-per-minute: 50
+  audit:
+    database-trigger-enabled: true
+
+logging:
+  level:
+    com.smartattendance: DEBUG
+    org.springframework.security: INFO

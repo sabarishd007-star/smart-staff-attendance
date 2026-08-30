@@ -1,0 +1,1616 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Smart Staff Attendance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="bg-slate-100 min-h-screen text-slate-800 antialiased">
+    <div id="root"></div>
+    <script type="text/babel">
+      const { useEffect, useState, useRef } = React;
+      const API_BASE_URL = window.location.origin.includes('5173') ? 'http://localhost:8080/api/v1' : '/api/v1';
+
+      class ErrorBoundary extends React.Component {
+        constructor(props) {
+          super(props);
+          this.state = { hasError: false, error: null };
+        }
+        static getDerivedStateFromError(error) {
+          return { hasError: true, error };
+        }
+        componentDidCatch(error, errorInfo) {
+          console.error("ErrorBoundary caught an error:", error, errorInfo);
+        }
+        handleReset = () => {
+          localStorage.clear();
+          window.location.reload();
+        };
+        render() {
+          if (this.state.hasError) {
+            return (
+              <div className="flex min-h-screen items-center justify-center p-4 bg-slate-100">
+                <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-lg text-center">
+                  <h2 className="text-lg font-bold text-slate-800 mb-2">Session Updated</h2>
+                  <p className="text-xs text-slate-500 mb-4">{this.state.error?.message || 'Please sign in again to load your updated profile.'}</p>
+                  <button
+                    onClick={this.handleReset}
+                    className="rounded-lg bg-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow hover:bg-indigo-700"
+                  >
+                    Back to Sign In
+                  </button>
+                </div>
+              </div>
+            );
+          }
+          return this.props.children;
+        }
+      }
+
+      function kolkataNow() {
+        return new Date();
+      }
+
+      function getWindowStatus(date) {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+        }).formatToParts(date);
+        const hour = Number(parts.find((part) => part.type === 'hour').value);
+        const minute = Number(parts.find((part) => part.type === 'minute').value);
+        return hour >= 5 && (hour < 17 || (hour === 17 && minute <= 30));
+      }
+
+      function Login({ onLoginSuccess }) {
+        const [email, setEmail] = useState('');
+        const [password, setPassword] = useState('');
+        const [loading, setLoading] = useState(false);
+
+        const handleLogin = (e) => {
+          if (e) e.preventDefault();
+
+          const mockUser = {
+            id: 1,
+            fullName: "Dr. John Doe",
+            email: "john.doe@college.edu",
+            role: "STAFF",
+            department: "Information Technology",
+            designation: "Professor",
+            profileCompleted: true
+          };
+
+          localStorage.setItem('jwt_token', 'demo-token-12345');
+          localStorage.setItem('user_info', JSON.stringify(mockUser));
+
+          window.location.reload();
+        };
+
+        return (
+          <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100">
+            <main className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
+              <div className="text-center mb-6">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md">
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 004 11a7.96 7.96 0 001.218 4.256" />
+                  </svg>
+                </div>
+                <h1 className="text-2xl font-bold text-slate-800">Staff Attendance Portal</h1>
+                <p className="text-sm text-slate-500 mt-1">Sign in with your official account</p>
+              </div>
+
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Official Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="staff@college.edu"
+                    className="w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-lg bg-indigo-600 py-2.5 font-medium text-white shadow transition hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:bg-indigo-400"
+                >
+                  {loading ? 'Signing In…' : 'Sign In'}
+                </button>
+              </form>
+            </main>
+          </div>
+        );
+      }
+
+      function GpsMapModal({ isOpen, onClose, attendanceRecord, onVerify }) {
+        const mapElement = useRef(null);
+
+        useEffect(() => {
+          if (!isOpen || !attendanceRecord || !mapElement.current || !window.L) return undefined;
+          const latitude = Number(attendanceRecord.latitude);
+          const longitude = Number(attendanceRecord.longitude);
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return undefined;
+
+          const map = window.L.map(mapElement.current).setView([latitude, longitude], 16);
+          window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+          }).addTo(map);
+
+          window.L.marker([latitude, longitude]).addTo(map)
+            .bindPopup(`<strong>${attendanceRecord.staff?.fullName || 'Staff'}</strong><br/>Captured: ${attendanceRecord.timeMarked}<br/>Lat: ${latitude}<br/>Lng: ${longitude}`)
+            .openPopup();
+
+          setTimeout(() => map.invalidateSize(), 100);
+          return () => map.remove();
+        }, [isOpen, attendanceRecord]);
+
+        if (!isOpen || !attendanceRecord) return null;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+            <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+              <header className="flex items-center justify-between bg-slate-900 p-4 text-white">
+                <div>
+                  <h3 className="text-lg font-bold">Verify Location</h3>
+                  <p className="text-xs text-slate-400">{attendanceRecord.staff?.fullName} ({attendanceRecord.staff?.department}) — {attendanceRecord.timeMarked}</p>
+                </div>
+                <button onClick={onClose} aria-label="Close map" className="text-xl text-slate-400 hover:text-white">×</button>
+              </header>
+              <div ref={mapElement} className="h-80 w-full bg-slate-200">
+                <p className="p-4 text-sm text-slate-500">Loading map…</p>
+              </div>
+              <footer className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-4">
+                <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200">Cancel</button>
+                <div className="flex gap-3">
+                  <button onClick={() => onVerify(attendanceRecord.attendanceId, 'REJECTED')} className="rounded-lg bg-rose-600 px-5 py-2 text-sm font-bold text-white hover:bg-rose-700">REJECT</button>
+                  <button onClick={() => onVerify(attendanceRecord.attendanceId, 'APPROVED')} className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-700">APPROVE</button>
+                </div>
+              </footer>
+            </div>
+          </div>
+        );
+      }
+
+      function AdminReports({ token }) {
+        const [reports, setReports] = useState([]);
+        const [loading, setLoading] = useState(true);
+
+        const fetchReports = async () => {
+          try {
+            const activeToken = token || localStorage.getItem('jwt_token') || localStorage.getItem('token');
+            const res = await fetch(`${API_BASE_URL}/admin/reports/daily`, {
+              headers: { Authorization: `Bearer ${activeToken}` }
+            });
+            if (res.ok) {
+              const data = await res.json();
+              setReports(data);
+            }
+          } catch (err) {
+            console.error("Failed to load reports", err);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        useEffect(() => {
+          fetchReports();
+        }, [token]);
+
+        const handleExportCSV = async () => {
+          try {
+            const activeToken = token || localStorage.getItem('jwt_token') || localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/admin/reports/export/csv`, {
+              headers: { Authorization: `Bearer ${activeToken}` }
+            });
+            if (!response.ok) throw new Error('Export failed');
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'attendance_report.csv';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+          } catch (err) {
+            console.error('Failed to export CSV', err);
+          }
+        };
+
+        if (loading) return <div className="p-4 text-center text-xs text-slate-500 font-medium">Loading admin reports...</div>;
+
+        return (
+          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800">Attendance Reports</h2>
+                <p className="text-xs text-slate-500">Live global attendance log overview</p>
+              </div>
+              <button 
+                onClick={handleExportCSV}
+                className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 transition shadow">
+                Export CSV / Excel
+              </button>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-100 text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  <tr>
+                    <th className="p-3">Staff Name</th>
+                    <th className="p-3">Department</th>
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white">
+                  {reports.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" className="p-4 text-center text-slate-400">No attendance reports found.</td>
+                    </tr>
+                  ) : (
+                    reports.map((r, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="p-3 font-medium text-slate-900">{r.staffName}</td>
+                        <td className="p-3 text-slate-600">{r.department}</td>
+                        <td className="p-3 text-slate-500">{r.date}</td>
+                        <td className="p-3 font-semibold">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ${
+                            r.status === 'VERIFIED' || r.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                            r.status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                            'bg-amber-100 text-amber-800'
+                          }`}>
+                            {r.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        );
+      }
+
+      function AttendanceAnalytics({ token }) {
+        const [data, setData] = useState(null);
+        const [loading, setLoading] = useState(true);
+
+        const fetchAnalytics = async () => {
+          try {
+            const activeToken = token || localStorage.getItem('jwt_token') || localStorage.getItem('token');
+            const res = await fetch(`${API_BASE_URL}/admin/analytics/summary`, {
+              headers: { Authorization: `Bearer ${activeToken}` }
+            });
+            if (res.ok) {
+              const result = await res.json();
+              setData(result);
+            }
+          } catch (err) {
+            console.error("Failed to load analytics data", err);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        useEffect(() => {
+          fetchAnalytics();
+        }, [token]);
+
+        if (loading) return <div className="p-4 text-center text-xs text-slate-500 font-medium">Loading Analytics...</div>;
+
+        const approved = data?.approvedCount || 0;
+        const pending = data?.pendingCount || 0;
+        const rejected = data?.rejectedCount || 0;
+        const total = approved + pending + rejected;
+
+        const approvedPct = total > 0 ? Math.round((approved / total) * 100) : 0;
+        const pendingPct = total > 0 ? Math.round((pending / total) * 100) : 0;
+        const rejectedPct = total > 0 ? Math.round((rejected / total) * 100) : 0;
+
+        return (
+          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800">Attendance Analytics & Breakdown</h2>
+                <p className="text-xs text-slate-500">Visual status distribution across total submitted attendance logs</p>
+              </div>
+              <button onClick={fetchAnalytics} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+                Refresh Chart
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">APPROVED / VERIFIED</p>
+                  <p className="text-2xl font-extrabold text-emerald-900 mt-1">{approved}</p>
+                </div>
+                <div className="text-right">
+                  <span className="inline-block px-2.5 py-1 rounded-full bg-emerald-200 text-emerald-800 text-xs font-extrabold">{approvedPct}%</span>
+                </div>
+              </div>
+
+              <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">PENDING VERIFICATION</p>
+                  <p className="text-2xl font-extrabold text-amber-900 mt-1">{pending}</p>
+                </div>
+                <div className="text-right">
+                  <span className="inline-block px-2.5 py-1 rounded-full bg-amber-200 text-amber-800 text-xs font-extrabold">{pendingPct}%</span>
+                </div>
+              </div>
+
+              <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-rose-600 uppercase tracking-wider">REJECTED</p>
+                  <p className="text-2xl font-extrabold text-rose-900 mt-1">{rejected}</p>
+                </div>
+                <div className="text-right">
+                  <span className="inline-block px-2.5 py-1 rounded-full bg-rose-200 text-rose-800 text-xs font-extrabold">{rejectedPct}%</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 pt-2">
+              <div className="flex justify-between text-xs font-medium text-slate-500">
+                <span>Status Breakdown Progress Bar</span>
+                <span>Total Logs: {total}</span>
+              </div>
+              <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
+                <div style={{ width: `${approvedPct}%` }} className="bg-emerald-500 transition-all duration-500" title={`Approved: ${approved}`} />
+                <div style={{ width: `${pendingPct}%` }} className="bg-amber-500 transition-all duration-500" title={`Pending: ${pending}`} />
+                <div style={{ width: `${rejectedPct}%` }} className="bg-rose-500 transition-all duration-500" title={`Rejected: ${rejected}`} />
+              </div>
+              <div className="flex justify-start gap-4 text-[10px] font-bold text-slate-600 pt-1">
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> Approved ({approved})</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span> Pending ({pending})</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span> Rejected ({rejected})</span>
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      function StaffManagement({ token }) {
+        const [staffList, setStaffList] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [resetModalId, setResetModalId] = useState(null);
+        const [newPassword, setNewPassword] = useState('');
+        const [resetFeedback, setResetFeedback] = useState('');
+
+        const fetchStaff = async () => {
+          try {
+            const activeToken = token || localStorage.getItem('jwt_token') || localStorage.getItem('token');
+            const res = await fetch(`${API_BASE_URL}/admin/staff`, {
+              headers: { Authorization: `Bearer ${activeToken}` }
+            });
+            if (res.ok) {
+              const data = await res.json();
+              setStaffList(data);
+            }
+          } catch (err) {
+            console.error("Failed to fetch staff list", err);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        useEffect(() => {
+          fetchStaff();
+        }, [token]);
+
+        const handleToggleStatus = async (id) => {
+          try {
+            const activeToken = token || localStorage.getItem('jwt_token') || localStorage.getItem('token');
+            const res = await fetch(`${API_BASE_URL}/admin/staff/${id}/toggle-status`, {
+              method: 'PATCH',
+              headers: { Authorization: `Bearer ${activeToken}` }
+            });
+            if (res.ok) fetchStaff();
+          } catch (err) {
+            alert("Failed to change staff status.");
+          }
+        };
+
+        const handleResetPasswordSubmit = async (e) => {
+          e.preventDefault();
+          if (!newPassword.trim()) return;
+          try {
+            const activeToken = token || localStorage.getItem('jwt_token') || localStorage.getItem('token');
+            const res = await fetch(`${API_BASE_URL}/admin/staff/${resetModalId}/reset-password`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${activeToken}`
+              },
+              body: JSON.stringify({ newPassword: newPassword.trim() })
+            });
+            if (res.ok) {
+              setResetFeedback('Password reset successfully!');
+              setTimeout(() => {
+                setResetModalId(null);
+                setNewPassword('');
+                setResetFeedback('');
+              }, 1200);
+            } else {
+              const err = await res.json().catch(() => ({}));
+              setResetFeedback(err.message || 'Failed to reset password.');
+            }
+          } catch (err) {
+            setResetFeedback('Failed to reset password.');
+          }
+        };
+
+        if (loading) return <div className="p-4 text-center text-xs text-slate-500 font-medium">Loading staff records...</div>;
+
+        return (
+          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800">Staff Management</h2>
+                <p className="text-xs text-slate-500">Manage employee accounts, active status, and credentials</p>
+              </div>
+              <button onClick={fetchStaff} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+                Refresh List
+              </button>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-100 text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  <tr>
+                    <th className="p-3">ID</th>
+                    <th className="p-3">Name</th>
+                    <th className="p-3">Email</th>
+                    <th className="p-3">Department</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white">
+                  {staffList.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="p-4 text-center text-slate-400">No staff members found.</td>
+                    </tr>
+                  ) : (
+                    staffList.map((s) => (
+                      <tr key={s.id} className="hover:bg-slate-50">
+                        <td className="p-3 font-mono text-slate-500">#{s.id}</td>
+                        <td className="p-3 font-medium text-slate-900">{s.fullName || s.name}</td>
+                        <td className="p-3 text-slate-600">{s.email}</td>
+                        <td className="p-3 text-slate-600">{s.department || 'Unassigned'}</td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ${
+                            s.active !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                          }`}>
+                            {s.active !== false ? 'Active' : 'Deactivated'}
+                          </span>
+                        </td>
+                        <td className="p-3 space-x-2">
+                          <button 
+                            onClick={() => handleToggleStatus(s.id)}
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded transition ${
+                              s.active !== false
+                                ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                                : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                            }`}>
+                            {s.active !== false ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            onClick={() => setResetModalId(s.id)}
+                            className="text-[10px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 px-2 py-0.5 rounded border border-slate-200 transition">
+                            Reset Password
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {resetModalId && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-6 w-full max-w-sm">
+                  <h3 className="text-sm font-bold text-slate-800 mb-2">Reset Password (Staff #{resetModalId})</h3>
+                  {resetFeedback && <p className="text-xs font-semibold text-indigo-600 mb-2">{resetFeedback}</p>}
+                  <form onSubmit={handleResetPasswordSubmit} className="space-y-3">
+                    <input
+                      type="password"
+                      required
+                      placeholder="Enter new password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-xs outline-none focus:border-indigo-500"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setResetModalId(null); setNewPassword(''); setResetFeedback(''); }}
+                        className="px-3 py-1.5 rounded text-xs font-semibold text-slate-600 hover:bg-slate-100">
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-3 py-1.5 rounded text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700">
+                        Save New Password
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </section>
+        );
+      }
+
+      function AdminDashboard({ user, token, onLogout, openMap, pendingRecords, fetchPendingRecords, handleVerify }) {
+        const [reportStartDate, setReportStartDate] = useState('');
+        const [reportEndDate, setReportEndDate] = useState('');
+        const [reportDepartment, setReportDepartment] = useState('');
+        const [reportFeedback, setReportFeedback] = useState('');
+        const [reportLoading, setReportLoading] = useState(false);
+
+        async function handleDownloadExcel(event) {
+          event.preventDefault();
+          setReportFeedback('');
+          if (reportEndDate < reportStartDate) {
+            setReportFeedback('End date must be on or after start date.');
+            return;
+          }
+          setReportLoading(true);
+          try {
+            const parameters = new URLSearchParams({ startDate: reportStartDate, endDate: reportEndDate });
+            if (reportDepartment.trim()) parameters.set('department', reportDepartment.trim());
+            const response = await fetch(`${API_BASE_URL}/admin/export/excel?${parameters}`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) {
+              const error = await response.json().catch(() => ({}));
+              throw new Error(error.message || 'Unable to export the attendance report.');
+            }
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `Attendance_Report_${reportStartDate}_to_${reportEndDate}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+          } catch (error) {
+            setReportFeedback(error.message);
+          } finally {
+            setReportLoading(false);
+          }
+        }
+
+        return (
+          <div className="min-h-screen bg-slate-50 p-6">
+            <main className="mx-auto max-w-5xl space-y-6">
+              <header className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div>
+                  <h1 className="text-xl font-bold text-slate-800">ADMIN DASHBOARD</h1>
+                  <p className="text-sm text-slate-500">Welcome, {user.fullName}</p>
+                </div>
+                <button onClick={onLogout} className="text-sm font-medium text-red-600 hover:text-red-800">Sign Out</button>
+              </header>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-4 text-lg font-semibold text-slate-800">Export Attendance Report</h2>
+                <form onSubmit={handleDownloadExcel} className="grid gap-3 sm:grid-cols-4">
+                  <label className="text-sm text-slate-600">Start date
+                    <input type="date" required value={reportStartDate} onChange={(e) => setReportStartDate(e.target.value)} className="mt-1 block w-full rounded border border-slate-300 px-2 py-1.5" />
+                  </label>
+                  <label className="text-sm text-slate-600">End date
+                    <input type="date" required value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)} className="mt-1 block w-full rounded border border-slate-300 px-2 py-1.5" />
+                  </label>
+                  <label className="text-sm text-slate-600">Department <span className="text-slate-400">(optional)</span>
+                    <input value={reportDepartment} onChange={(e) => setReportDepartment(e.target.value)} placeholder="e.g. CSE" className="mt-1 block w-full rounded border border-slate-300 px-2 py-1.5" />
+                  </label>
+                  <div className="flex items-end">
+                    <button disabled={reportLoading} className="w-full rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:bg-slate-400">
+                      {reportLoading ? 'Preparing…' : 'Download Excel'}
+                    </button>
+                  </div>
+                </form>
+                {reportFeedback && <p className="mt-3 text-sm text-red-600">{reportFeedback}</p>}
+              </section>
+
+              <AttendanceAnalytics token={token} />
+
+              <AdminReports token={token} />
+
+              <StaffManagement token={token} />
+
+              <GeofenceSettings />
+
+              <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-slate-800">Pending Attendance Verifications</h2>
+                  <button onClick={fetchPendingRecords} className="text-sm text-indigo-600 hover:text-indigo-800">Refresh</button>
+                </div>
+                {pendingRecords.length === 0 ? (
+                  <p className="text-sm text-slate-500">No pending attendance requests to process.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="border-b bg-slate-50 text-slate-600">
+                          <th className="p-3">Staff</th>
+                          <th className="p-3">Dept</th>
+                          <th className="p-3">Time</th>
+                          <th className="p-3">Coordinates</th>
+                          <th className="p-3">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pendingRecords.map((item) => (
+                          <tr key={item.attendanceId} className="border-b hover:bg-slate-50">
+                            <td className="p-3 font-medium text-slate-800">{item.staff?.fullName}</td>
+                            <td className="p-3 text-slate-600">{item.staff?.department}</td>
+                            <td className="p-3 text-slate-600">{item.timeMarked}</td>
+                            <td className="p-3 font-mono text-xs text-slate-500">{item.latitude}, {item.longitude}</td>
+                            <td className="space-x-2 p-3">
+                              <button onClick={() => openMap(item)} className="rounded bg-indigo-600 px-3 py-1 text-xs text-white hover:bg-indigo-700">View map</button>
+                              <button onClick={() => handleVerify(item.attendanceId, 'APPROVED')} className="rounded bg-emerald-600 px-3 py-1 text-xs text-white hover:bg-emerald-700">Approve</button>
+                              <button onClick={() => handleVerify(item.attendanceId, 'REJECTED')} className="rounded bg-rose-600 px-3 py-1 text-xs text-white hover:bg-rose-700">Reject</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </main>
+          </div>
+        );
+      }
+
+      function GeofenceSettings() {
+        const [radius, setRadius] = useState(500);
+        const [lat, setLat] = useState(13.0827);
+        const [lng, setLng] = useState(80.2707);
+        const [saved, setSaved] = useState(false);
+
+        const handleSave = (e) => {
+          e.preventDefault();
+          setSaved(true);
+          setTimeout(() => setSaved(false), 3000);
+        };
+
+        return (
+          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Campus Geofence Configuration</h2>
+              <p className="text-xs text-slate-500">
+                Adjust the campus boundary preview. To persist changes, update <code className="bg-slate-100 px-1 rounded">application.yml</code> or set environment variables.
+              </p>
+            </div>
+
+            <form onSubmit={handleSave} className="space-y-4 max-w-lg">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Campus Latitude</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={lat}
+                    onChange={(e) => setLat(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Campus Longitude</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={lng}
+                    onChange={(e) => setLng(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">
+                  Allowed Radius — <span className="text-indigo-700 font-extrabold">{radius}m</span>
+                </label>
+                <input
+                  type="range"
+                  min="100"
+                  max="2000"
+                  step="50"
+                  value={radius}
+                  onChange={(e) => setRadius(Number(e.target.value))}
+                  className="w-full accent-indigo-600"
+                />
+                <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                  <span>100m</span><span>2000m</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                📍 <strong>Campus:</strong> {lat}°N, {lng}°E &nbsp;|&nbsp; <strong>Boundary:</strong> {radius}m radius
+              </div>
+
+              <button
+                type="submit"
+                className="w-full rounded-lg bg-indigo-600 py-2.5 text-xs font-bold text-white shadow hover:bg-indigo-700 transition"
+              >
+                Preview Geofence Settings
+              </button>
+
+              {saved && (
+                <p className="text-xs text-emerald-700 font-semibold text-center">
+                  ✅ Preview updated! Set <code>campus-latitude</code>, <code>campus-longitude</code> and <code>allowed-radius-meters</code> in application.yml to apply permanently.
+                </p>
+              )}
+            </form>
+          </section>
+        );
+      }
+
+      function HodDashboard({ user, token, onLogout, openMap, pendingRecords, fetchHodPendingRecords, handleHodVerify }) {
+        const [dashboardData, setDashboardData] = useState(null);
+        const [loading, setLoading] = useState(true);
+
+        const fetchHodData = async () => {
+          try {
+            const activeToken = token || localStorage.getItem('jwt_token') || localStorage.getItem('token');
+            const res = await fetch(`${API_BASE_URL}/hod/dashboard`, {
+              headers: { Authorization: `Bearer ${activeToken}` }
+            });
+            if (res.ok) {
+              const result = await res.json();
+              setDashboardData(result);
+            }
+          } catch (err) {
+            console.error("Failed to load HOD dashboard", err);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        useEffect(() => {
+          fetchHodData();
+        }, [token]);
+
+        return (
+          <div className="min-h-screen bg-slate-50 p-6">
+            <main className="mx-auto max-w-5xl space-y-6">
+              <header className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div>
+                  <h1 className="text-xl font-bold text-slate-800">HOD DASHBOARD</h1>
+                  <p className="text-sm text-slate-500">{dashboardData?.department || user.department} Department Analytics · {user.fullName}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={fetchHodData} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">Refresh Stats</button>
+                  <button onClick={onLogout} className="text-sm font-medium text-red-600 hover:text-red-800">Sign Out</button>
+                </div>
+              </header>
+
+              {/* Metric Cards */}
+              {dashboardData && (
+                <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm text-center">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">TOTAL STAFF</p>
+                    <p className="text-2xl font-bold text-slate-800 mt-1">{dashboardData.totalStaff}</p>
+                  </div>
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl shadow-sm text-center">
+                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">PRESENT</p>
+                    <p className="text-2xl font-bold text-emerald-900 mt-1">{dashboardData.presentCount}</p>
+                  </div>
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl shadow-sm text-center">
+                    <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">PENDING</p>
+                    <p className="text-2xl font-bold text-amber-900 mt-1">{dashboardData.pendingCount}</p>
+                  </div>
+                  <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl shadow-sm text-center">
+                    <p className="text-[10px] font-bold text-rose-600 uppercase tracking-wider">REJECTED</p>
+                    <p className="text-2xl font-bold text-rose-900 mt-1">{dashboardData.rejectedCount}</p>
+                  </div>
+                </section>
+              )}
+
+              <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-800">Department Attendance Verifications</h2>
+                    <p className="text-sm text-slate-500">Only pending requests from {user.department} department are shown.</p>
+                  </div>
+                  <button onClick={fetchHodPendingRecords} className="text-sm text-indigo-600 hover:text-indigo-800">Refresh</button>
+                </div>
+                {pendingRecords.length === 0 ? (
+                  <p className="text-sm text-slate-500">No pending attendance requests to process.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="border-b bg-slate-50 text-slate-600">
+                          <th className="p-3">Staff</th>
+                          <th className="p-3">Time</th>
+                          <th className="p-3">Coordinates</th>
+                          <th className="p-3">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pendingRecords.map((item) => (
+                          <tr key={item.attendanceId} className="border-b hover:bg-slate-50">
+                            <td className="p-3 font-medium text-slate-800">{item.staff?.fullName}</td>
+                            <td className="p-3 text-slate-600">{item.timeMarked}</td>
+                            <td className="p-3 font-mono text-xs text-slate-500">{item.latitude}, {item.longitude}</td>
+                            <td className="space-x-2 p-3">
+                              <button onClick={() => openMap(item)} className="rounded bg-indigo-600 px-3 py-1 text-xs text-white hover:bg-indigo-700">View map</button>
+                              <button onClick={() => handleHodVerify(item.attendanceId, 'APPROVED')} className="rounded bg-emerald-600 px-3 py-1 text-xs text-white hover:bg-emerald-700">Approve</button>
+                              <button onClick={() => handleHodVerify(item.attendanceId, 'REJECTED')} className="rounded bg-rose-600 px-3 py-1 text-xs text-white hover:bg-rose-700">Reject</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              {/* Department Attendance Records Log */}
+              {dashboardData && (
+                <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                  <h2 className="text-lg font-semibold text-slate-800">Department Attendance Records</h2>
+                  <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                    <table className="w-full text-left text-xs text-slate-600">
+                      <thead className="bg-slate-100 text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                        <tr>
+                          <th className="p-3">Staff Name</th>
+                          <th className="p-3">Date</th>
+                          <th className="p-3">Time</th>
+                          <th className="p-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 bg-white">
+                        {dashboardData.recentLogs && dashboardData.recentLogs.length > 0 ? (
+                          dashboardData.recentLogs.map((log, idx) => (
+                            <tr key={log.attendanceId || log.id || idx} className="hover:bg-slate-50">
+                              <td className="p-3 font-medium text-slate-900">{log.staff ? (log.staff.fullName || log.staff.name) : 'N/A'}</td>
+                              <td className="p-3 text-slate-600">{log.date}</td>
+                              <td className="p-3 text-slate-500">{log.timeMarked || log.time || 'N/A'}</td>
+                              <td className="p-3 font-semibold">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ${
+                                  log.status === 'VERIFIED' || log.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                                  log.status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                                  'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {log.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan="4" className="p-4 text-center text-slate-400">No departmental attendance logs found.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+            </main>
+          </div>
+        );
+      }
+
+      const ENGINEERING_COURSES = [
+        "Computer Science and Engineering (CSE)",
+        "Information Technology (IT)",
+        "Electronics and Communication Engineering (ECE)",
+        "Electrical and Electronics Engineering (EEE)",
+        "Mechanical Engineering (MECH)",
+        "Civil Engineering (CIVIL)",
+        "Artificial Intelligence & Data Science (AI&DS)",
+        "Artificial Intelligence & Machine Learning (AI&ML)"
+      ];
+
+      const DESIGNATIONS = [
+        "Professor",
+        "Associate Professor",
+        "Assistant Professor",
+        "Head of Department (HOD)",
+        "Senior Lecturer",
+        "Lecturer",
+        "Lab Assistant"
+      ];
+
+      function SetupProfile({ user, onComplete, token }) {
+        const initialDept = user && user.department && user.department !== 'Unassigned' ? user.department : '';
+        const initialDesig = user && user.designation && user.designation !== 'Unassigned' ? user.designation : '';
+        const [department, setDepartment] = useState(initialDept);
+        const [designation, setDesignation] = useState(initialDesig);
+        const [loading, setLoading] = useState(false);
+        const [error, setError] = useState('');
+
+        async function handleSubmit(e) {
+          e.preventDefault();
+          if (!department || !designation) {
+            setError('Please select both Department and Designation.');
+            return;
+          }
+          setLoading(true);
+          setError('');
+
+          try {
+            const updatedUser = {
+              ...user,
+              department: department.trim(),
+              designation: designation.trim(),
+              profileCompleted: true
+            };
+
+            localStorage.setItem('user_info', JSON.stringify(updatedUser));
+            onComplete(updatedUser);
+          } catch (err) {
+            setError(err.message || 'Error updating profile. Please try again.');
+          } finally {
+            setLoading(false);
+          }
+        }
+
+        return (
+          <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
+            <main className="w-full max-w-md overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+              <header className="bg-indigo-600 p-6 text-white">
+                <h1 className="text-xl font-bold">Welcome, {user.fullName}!</h1>
+                <p className="mt-1 text-xs text-indigo-100">Please select your engineering course and designation to complete setup.</p>
+              </header>
+
+              <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                {error && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600">
+                    {error}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Engineering Course / Department</label>
+                  <select
+                    required
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm bg-white outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                  >
+                    <option value="" disabled>-- Select Engineering Course --</option>
+                    {ENGINEERING_COURSES.map((course) => (
+                      <option key={course} value={course}>{course}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Designation</label>
+                  <select
+                    required
+                    value={designation}
+                    onChange={(e) => setDesignation(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm bg-white outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                  >
+                    <option value="" disabled>-- Select Designation --</option>
+                    {DESIGNATIONS.map((desig) => (
+                      <option key={desig} value={desig}>{desig}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-lg bg-indigo-600 py-3 text-sm font-bold tracking-wide text-white shadow transition hover:bg-indigo-700 disabled:bg-indigo-400"
+                >
+                  {loading ? 'Saving Profile…' : 'SAVE & GO TO DASHBOARD'}
+                </button>
+              </form>
+            </main>
+          </div>
+        );
+      }
+
+      function NotificationCenter({ token }) {
+        const [alerts, setAlerts] = useState([]);
+        const [dismissed, setDismissed] = useState({});
+
+        const fetchNotifications = async () => {
+          try {
+            const activeToken = token || localStorage.getItem('jwt_token') || localStorage.getItem('token');
+            const res = await fetch(`${API_BASE_URL}/notifications/my-alerts`, {
+              headers: { Authorization: `Bearer ${activeToken}` }
+            });
+            if (res.ok) {
+              const data = await res.json();
+              setAlerts(data);
+            }
+          } catch (err) {
+            console.error("Failed to load notifications", err);
+          }
+        };
+
+        useEffect(() => {
+          fetchNotifications();
+        }, [token]);
+
+        const visibleAlerts = alerts.filter((_, idx) => !dismissed[idx]);
+        if (visibleAlerts.length === 0) return null;
+
+        return (
+          <div className="mx-4 mt-3 space-y-2">
+            {alerts.map((alert, idx) => {
+              if (dismissed[idx]) return null;
+              const styles = {
+                SUCCESS: { wrapper: 'bg-emerald-50 border-emerald-200 text-emerald-900', icon: '✅' },
+                DANGER: { wrapper: 'bg-rose-50 border-rose-200 text-rose-900', icon: '❌' },
+                INFO: { wrapper: 'bg-blue-50 border-blue-200 text-blue-900', icon: '🕐' },
+              }[alert.type] || { wrapper: 'bg-slate-50 border-slate-200 text-slate-800', icon: 'ℹ️' };
+              return (
+                <div key={idx} className={`flex items-start gap-3 px-4 py-3 rounded-xl border shadow-sm ${styles.wrapper}`}>
+                  <span className="text-base leading-none mt-0.5">{styles.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold leading-tight">{alert.title}</p>
+                    <p className="text-xs mt-0.5 leading-relaxed opacity-90">{alert.message}</p>
+                  </div>
+                  <button
+                    onClick={() => setDismissed(d => ({ ...d, [idx]: true }))}
+                    className="text-xs opacity-50 hover:opacity-100 transition font-bold shrink-0 ml-2"
+                    aria-label="Dismiss"
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      }
+
+      function AttendanceHistory({ token, refreshKey }) {
+        const [data, setData] = useState(null);
+        const [loading, setLoading] = useState(true);
+
+        const fetchHistory = async () => {
+          try {
+            const activeToken = token || localStorage.getItem('jwt_token') || localStorage.getItem('token');
+            const res = await fetch(`${API_BASE_URL}/attendance/history`, {
+              headers: { Authorization: `Bearer ${activeToken}` }
+            });
+            if (res.ok) {
+              const result = await res.json();
+              setData(result);
+            }
+          } catch (err) {
+            console.error("Failed to load attendance history", err);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        useEffect(() => {
+          fetchHistory();
+        }, [token, refreshKey]);
+
+        if (loading) return <div className="p-6 text-center text-xs text-slate-500 font-medium">Loading attendance history...</div>;
+        if (!data || !data.records || data.records.length === 0) {
+          return (
+            <section className="p-6 border-t border-slate-100 bg-white">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Attendance History</h2>
+              <div className="p-4 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">No past attendance records found.</div>
+            </section>
+          );
+        }
+
+        return (
+          <section className="p-6 border-t border-slate-100 bg-white space-y-6">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-indigo-600">Attendance History & Monthly Summary</h2>
+            
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-center">
+                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">TOTAL DAYS</p>
+                <p className="text-xl font-extrabold text-blue-900 mt-1">{data.totalDays}</p>
+              </div>
+              <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-center">
+                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">PRESENT</p>
+                <p className="text-xl font-extrabold text-emerald-900 mt-1">{data.presentDays}</p>
+              </div>
+              <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg text-center">
+                <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">PENDING</p>
+                <p className="text-xl font-extrabold text-amber-900 mt-1">{data.pendingDays}</p>
+              </div>
+              <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-center">
+                <p className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">ATTENDANCE %</p>
+                <p className="text-xl font-extrabold text-purple-900 mt-1">{data.attendancePercentage}%</p>
+              </div>
+            </div>
+
+            {/* History Table */}
+            <div className="overflow-hidden border border-slate-200 rounded-lg shadow-sm">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-100 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                  <tr>
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Time</th>
+                    <th className="p-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {data.records.map((rec, idx) => (
+                    <tr key={rec.attendanceId || rec.id || idx} className="hover:bg-slate-50">
+                      <td className="p-3 font-medium text-slate-800">{rec.date}</td>
+                      <td className="p-3 text-slate-500">{rec.timeMarked || rec.time || 'N/A'}</td>
+                      <td className="p-3 font-semibold">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ${
+                          rec.status === 'VERIFIED' || rec.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                          rec.status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                          'bg-amber-100 text-amber-800'
+                        }`}>
+                          {rec.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        );
+      }
+
+      function ApplyLeaveModal({ isOpen, onClose, onRefresh, token }) {
+        const [formData, setFormData] = useState({
+          startDate: '',
+          endDate: '',
+          leaveType: 'CASUAL',
+          reason: ''
+        });
+
+        if (!isOpen) return null;
+
+        const handleSubmit = async (e) => {
+          e.preventDefault();
+          try {
+            const activeToken = token || localStorage.getItem('jwt_token') || localStorage.getItem('token');
+            const baseUrl = typeof API_BASE_URL !== 'undefined'
+              ? API_BASE_URL
+              : 'https://vitalscan-api-y891.onrender.com/api/v1';
+
+            const res = await fetch(`${baseUrl}/leave/apply`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${activeToken}`
+              },
+              body: JSON.stringify(formData)
+            });
+            if (res.ok) {
+              alert("Leave applied successfully!");
+              onRefresh();
+              onClose();
+            } else {
+              alert("Failed to submit leave request.");
+            }
+          } catch (err) {
+            alert("Failed to submit leave request.");
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+              <header className="flex items-center justify-between bg-slate-900 p-4 text-white">
+                <h3 className="text-lg font-bold">Apply for Leave</h3>
+                <button onClick={onClose} aria-label="Close modal" className="text-xl text-slate-400 hover:text-white">×</button>
+              </header>
+              <div className="p-6 space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Leave Type</label>
+                    <select
+                      value={formData.leaveType}
+                      onChange={(e) => setFormData({ ...formData, leaveType: e.target.value })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                    >
+                      <option value="CASUAL">Casual Leave</option>
+                      <option value="SICK">Sick Leave</option>
+                      <option value="EARNED">Earned Leave</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        required
+                        value={formData.startDate}
+                        onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">End Date</label>
+                      <input
+                        type="date"
+                        required
+                        value={formData.endDate}
+                        onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Reason</label>
+                    <textarea
+                      required
+                      rows="3"
+                      value={formData.reason}
+                      onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                      placeholder="Reason for leave..."
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                    <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200">
+                      Cancel
+                    </button>
+                    <button type="submit" className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-bold text-white shadow hover:bg-indigo-700 transition">
+                      Submit Request
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function StaffDashboard({ user, onLogout, token, onEditProfile }) {
+        const [currentTime, setCurrentTime] = useState(kolkataNow);
+        const [isWindowOpen, setIsWindowOpen] = useState(() => getWindowStatus(new Date()));
+        const [attendanceStatus, setAttendanceStatus] = useState('NOT MARKED');
+        const [gpsLoading, setGpsLoading] = useState(false);
+        const [feedback, setFeedback] = useState({ type: '', msg: '' });
+        const [refreshKey, setRefreshKey] = useState(0);
+        const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+
+        useEffect(() => {
+          const updateClock = () => {
+            const now = new Date();
+            setCurrentTime(now);
+            setIsWindowOpen(getWindowStatus(now));
+          };
+          updateClock();
+          const timer = setInterval(updateClock, 1000);
+          return () => clearInterval(timer);
+        }, []);
+
+        function handleTakeAttendance() {
+          setFeedback({ type: '', msg: '' });
+          if (!navigator.geolocation) {
+            setFeedback({ type: 'error', msg: 'Geolocation is not supported by your browser.' });
+            return;
+          }
+          setGpsLoading(true);
+          navigator.geolocation.getCurrentPosition(
+            async ({ coords }) => {
+              try {
+                const response = await fetch(`${API_BASE_URL}/attendance/mark`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                  body: JSON.stringify({ latitude: coords.latitude, longitude: coords.longitude })
+                });
+                if (response.status === 409) throw new Error('Attendance has already been marked for today.');
+                if (!response.ok) {
+                  const errorData = await response.json().catch(() => ({}));
+                  throw new Error(errorData.message || 'Failed to submit attendance.');
+                }
+                setAttendanceStatus('PENDING');
+                setFeedback({ type: 'success', msg: 'Attendance marked — sent for verification.' });
+                setRefreshKey((prev) => prev + 1);
+              } catch (error) {
+                setFeedback({ type: 'error', msg: error.message });
+              } finally {
+                setGpsLoading(false);
+              }
+            },
+            (error) => {
+              setGpsLoading(false);
+              setFeedback({ type: 'error', msg: `GPS error: ${error.message}` });
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          );
+        }
+
+        const disabled = !isWindowOpen || attendanceStatus !== 'NOT MARKED' || gpsLoading;
+
+        // Personal detail rows — sourced entirely from the DB via the login response
+        const details = [
+          { label: 'Staff Name',     value: user.fullName },
+          { label: 'Staff ID',       value: user.id ? `#${user.id}` : '—' },
+          { label: 'College Email',  value: user.email },
+          { label: 'Department',     value: user.department },
+          { label: 'Designation',    value: user.designation },
+          { label: 'Role',           value: user.role },
+        ];
+
+        return (
+          <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
+            <main className="w-full max-w-2xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg my-6">
+
+              {/* ── Top bar ── */}
+              <header className="flex items-center justify-between bg-slate-900 p-4 text-white">
+                <span className="text-xs font-bold uppercase tracking-widest">Smart Staff Attendance</span>
+                <button onClick={onLogout} className="text-xs text-slate-400 hover:text-white">Logout</button>
+              </header>
+
+              <NotificationCenter token={token} />
+
+              {/* ── Personal Details Card ── */}
+              <section className="border-b border-slate-100 p-6">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-indigo-600">Personal Details</h2>
+                  {onEditProfile && (
+                    <button onClick={onEditProfile} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+                      ✏️ Edit Setup
+                    </button>
+                  )}
+                </div>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  {details.map(({ label, value }) => (
+                    <div key={label}>
+                      <dt className="text-xs font-medium text-slate-400">{label}</dt>
+                      <dd className="mt-0.5 text-sm font-semibold text-slate-800 break-all">{value || '—'}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+
+              {/* ── Attendance Section ── */}
+              <section className="space-y-4 bg-slate-50 p-6">
+                <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500">Attendance</h2>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-600">Current Time:</span>
+                  <time className="font-mono text-lg font-bold text-slate-800">{currentTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}</time>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-600">Today's Status:</span>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                    attendanceStatus === 'PENDING'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-slate-200 text-slate-700'
+                  }`}>{attendanceStatus}</span>
+                </div>
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-slate-500">
+                  <strong>Attendance Window:</strong> 05:00 AM – 05:30 PM IST
+                  {!isWindowOpen && <span className="mt-1 block font-semibold text-red-500">Window is currently CLOSED.</span>}
+                </div>
+                {feedback.msg && (
+                  <p className={`rounded-lg border p-3 text-xs font-medium ${
+                    feedback.type === 'error'
+                      ? 'border-red-200 bg-red-50 text-red-700'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  }`}>
+                    {feedback.msg}
+                  </p>
+                )}
+                <div className="flex gap-3">
+                  <button
+                    id="take-attendance-btn"
+                    onClick={handleTakeAttendance}
+                    disabled={disabled}
+                    className={`w-full rounded-lg py-3 text-sm font-bold tracking-wide transition ${
+                      disabled
+                        ? 'cursor-not-allowed bg-slate-300 text-slate-500'
+                        : 'bg-indigo-600 text-white shadow-md hover:bg-indigo-700'
+                    }`}
+                  >
+                    {gpsLoading ? 'Capturing Location...' : 'TAKE ATTENDANCE'}
+                  </button>
+                  <button
+                    onClick={() => setIsLeaveModalOpen(true)}
+                    className="w-full rounded-lg py-3 text-sm font-bold tracking-wide transition bg-teal-600 text-white shadow-md hover:bg-teal-700"
+                  >
+                    REQUEST LEAVE
+                  </button>
+                </div>
+              </section>
+
+              {/* ── Attendance History Section ── */}
+              <AttendanceHistory token={token} refreshKey={refreshKey} />
+              
+              {/* ── Leave Application Modal ── */}
+              <ApplyLeaveModal
+                isOpen={isLeaveModalOpen}
+                onClose={() => setIsLeaveModalOpen(false)}
+                onRefresh={() => setRefreshKey(prev => prev + 1)}
+                token={token}
+              />
+            </main>
+          </div>
+        );
+      }
+
+      function App() {
+        const [token, setToken] = useState(localStorage.getItem('jwt_token') || '');
+        const [user, setUser] = useState(() => {
+          try { return JSON.parse(localStorage.getItem('user_info') || 'null'); }
+          catch { return null; }
+        });
+        // showSetup is true when a first-time user must complete onboarding
+        const [showSetup, setShowSetup] = useState(false);
+        const [pendingRecords, setPendingRecords] = useState([]);
+        const [selectedRecord, setSelectedRecord] = useState(null);
+        const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+
+        useEffect(() => {
+          if (token && user?.role === 'ADMIN') fetchPendingRecords();
+          if (token && user?.role === 'HOD') fetchHodPendingRecords();
+        }, [token, user]);
+
+        function handleLoginSuccess(authData) {
+          setToken(authData.token);
+          setUser(authData);
+          localStorage.setItem('jwt_token', authData.token);
+          localStorage.setItem('user_info', JSON.stringify(authData));
+          // Route: first-time users see setup screen; returning users go straight to dashboard
+          if (!authData.profileCompleted) {
+            setShowSetup(true);
+          }
+        }
+
+        function handleLogout() {
+          setToken('');
+          setUser(null);
+          localStorage.removeItem('jwt_token');
+          localStorage.removeItem('user_info');
+        }
+
+        async function fetchPendingRecords() {
+          try {
+            const response = await fetch(`${API_BASE_URL}/admin/pending`, { headers: { Authorization: `Bearer ${token}` } });
+            if (response.ok) setPendingRecords(await response.json());
+          } catch (error) { console.error('Failed to fetch pending attendance.', error); }
+        }
+
+        async function fetchHodPendingRecords() {
+          try {
+            const response = await fetch(`${API_BASE_URL}/hod/pending`, { headers: { Authorization: `Bearer ${token}` } });
+            if (response.ok) setPendingRecords(await response.json());
+          } catch (error) { console.error('Failed to fetch department attendance.', error); }
+        }
+
+        async function handleVerify(attendanceId, action) {
+          try {
+            const response = await fetch(`${API_BASE_URL}/admin/verify/${attendanceId}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ action })
+            });
+            if (!response.ok) throw new Error();
+            setPendingRecords((records) => records.filter((record) => record.attendanceId !== attendanceId));
+            return true;
+          } catch { alert(`Failed to ${action.toLowerCase()} the record.`); return false; }
+        }
+
+        async function handleHodVerify(attendanceId, action) {
+          try {
+            const response = await fetch(`${API_BASE_URL}/hod/verify/${attendanceId}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ action })
+            });
+            if (!response.ok) {
+              const error = await response.json().catch(() => ({}));
+              throw new Error(error.message || 'Unable to process the record.');
+            }
+            setPendingRecords((records) => records.filter((record) => record.attendanceId !== attendanceId));
+            return true;
+          } catch (error) { alert(error.message); return false; }
+        }
+
+        function openMap(record) {
+          setSelectedRecord(record);
+          setIsMapModalOpen(true);
+        }
+
+        function closeMap() {
+          setIsMapModalOpen(false);
+          setSelectedRecord(null);
+        }
+
+        async function handleMapVerification(attendanceId, action) {
+          const verified = user?.role === 'HOD'
+            ? await handleHodVerify(attendanceId, action)
+            : await handleVerify(attendanceId, action);
+          if (verified) closeMap();
+        }
+
+        function handleSetupComplete(updatedUser) {
+          setUser(updatedUser);
+          localStorage.setItem('user_info', JSON.stringify(updatedUser));
+          setShowSetup(false);
+        }
+
+        if (!token || !user || !user.role) {
+          return <Login onLoginSuccess={handleLoginSuccess} />;
+        }
+
+        if (showSetup) {
+          return <SetupProfile user={user} token={token} onComplete={handleSetupComplete} />;
+        }
+
+        if (user.role === 'ADMIN') {
+          return (
+            <>
+              <AdminDashboard
+                user={user}
+                token={token}
+                onLogout={handleLogout}
+                openMap={openMap}
+                pendingRecords={pendingRecords}
+                fetchPendingRecords={fetchPendingRecords}
+                handleVerify={handleVerify}
+              />
+              <GpsMapModal isOpen={isMapModalOpen} onClose={closeMap} attendanceRecord={selectedRecord} onVerify={handleMapVerification} />
+            </>
+          );
+        }
+
+        if (user.role === 'HOD') {
+          return (
+            <>
+              <HodDashboard
+                user={user}
+                onLogout={handleLogout}
+                openMap={openMap}
+                pendingRecords={pendingRecords}
+                fetchHodPendingRecords={fetchHodPendingRecords}
+                handleHodVerify={handleHodVerify}
+              />
+              <GpsMapModal isOpen={isMapModalOpen} onClose={closeMap} attendanceRecord={selectedRecord} onVerify={handleMapVerification} />
+            </>
+          );
+        }
+
+        return (
+          <StaffDashboard
+            user={user}
+            onLogout={handleLogout}
+            token={token}
+            onEditProfile={() => setShowSetup(true)}
+          />
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      );
+    </script>
+  </body>
+</html>
