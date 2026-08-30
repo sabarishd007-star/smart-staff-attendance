@@ -46,7 +46,9 @@ public class SecurityConfig {
                     .includeSubDomains(true)
                     .maxAgeInSeconds(31536000))
                 .contentSecurityPolicy(csp -> csp
-                    .policyDirectives("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"))
+                    .policyDirectives("default-src 'self'; " +
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.tailwindcss.com https://unpkg.com/@babel/standalone https://unpkg.com/react@18/umd/react.production.min.js https://unpkg.com/react-dom@18/umd/react-dom.production.min.js; " +
+                        "style-src 'self' 'unsafe-inline' https://unpkg.com;"))
                 .xssProtection(xss -> xss.disable()) // Rely on CSP instead of legacy X-XSS-Protection
             )
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
