@@ -1294,7 +1294,12 @@
         const [currentTime, setCurrentTime] = useState(kolkataNow);
         const [isWindowOpen, setIsWindowOpen] = useState(() => getWindowStatus(new Date()));
         const [attendanceStatus, setAttendanceStatus] = useState(() => {
-          return localStorage.getItem('today_attendance_status') || 'NOT MARKED';
+          const stored = JSON.parse(localStorage.getItem('today_attendance_status') || 'null');
+          const todayKey = new Date().toLocaleDateString('en-IN');
+          if (stored && stored.date === todayKey) return stored.status;
+          // Different day — clear stale status
+          localStorage.removeItem('today_attendance_status');
+          return 'NOT MARKED';
         });
         const [gpsLoading, setGpsLoading] = useState(false);
         const [feedback, setFeedback] = useState({ type: '', msg: '' });
@@ -1328,7 +1333,8 @@
               try {
                 const status = 'PRESENT';
                 setAttendanceStatus(status);
-                localStorage.setItem('today_attendance_status', status);
+                const todayKey = new Date().toLocaleDateString('en-IN');
+                localStorage.setItem('today_attendance_status', JSON.stringify({ status, date: todayKey }));
 
                 // Save to local history (deduplicate by date)
                 const today = new Date().toLocaleDateString('en-IN');
