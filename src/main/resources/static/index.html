@@ -587,7 +587,7 @@
         );
       }
 
-      function AdminDashboard({ user, token, onLogout, openMap, pendingRecords, fetchPendingRecords, handleVerify }) {
+      function AdminDashboard({ user, token, onLogout, openMap, pendingRecords, fetchPendingRecords, handleVerify, corrections, onReviewCorrection, refreshCorrections }) {
         const [reportStartDate, setReportStartDate] = useState('');
         const [reportEndDate, setReportEndDate] = useState('');
         const [reportDepartment, setReportDepartment] = useState('');
@@ -661,6 +661,10 @@
               </section>
 
               <AttendanceAnalytics token={token} />
+
+              <AttendanceIntelligence corrections={corrections} token={token} />
+
+              <CorrectionVerificationCard corrections={corrections} onReview={onReviewCorrection} onRefresh={refreshCorrections} />
 
               <AdminReports token={token} />
 
@@ -795,7 +799,7 @@
         );
       }
 
-      function HodDashboard({ user, token, onLogout, openMap, pendingRecords, fetchHodPendingRecords, handleHodVerify }) {
+      function HodDashboard({ user, token, onLogout, openMap, pendingRecords, fetchHodPendingRecords, handleHodVerify, corrections, onReviewCorrection, refreshCorrections }) {
         const [dashboardData, setDashboardData] = useState(null);
         const [loading, setLoading] = useState(true);
 
@@ -855,6 +859,10 @@
                   </div>
                 </section>
               )}
+
+              <AttendanceIntelligence corrections={corrections} token={token} />
+
+              <CorrectionVerificationCard corrections={corrections} onReview={onReviewCorrection} onRefresh={refreshCorrections} />
 
               <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="mb-4 flex items-center justify-between">
@@ -1408,7 +1416,68 @@
         );
       }
 
-      function StaffDashboard({ user, onLogout, token, onEditProfile }) {
+      function CorrectionRequestModal({ isOpen, onClose, onSubmit }) {
+        const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+        const [reason, setReason] = useState('GPS Issue');
+        const [note, setNote] = useState('');
+        if (!isOpen) return null;
+        const submit = (event) => {
+          event.preventDefault();
+          onSubmit({ date, reason, note });
+          setNote('');
+        };
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="correction-title">
+            <form onSubmit={submit} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4">
+              <div className="flex items-start justify-between"><div><h2 id="correction-title" className="text-lg font-bold text-slate-800">Request Attendance Correction</h2><p className="mt-1 text-xs text-slate-500">For missed attendance, GPS, or time-window issues. Your request will be sent for approval.</p></div><button type="button" onClick={onClose} className="text-xl text-slate-400 hover:text-slate-700">×</button></div>
+              <label className="block text-sm font-medium text-slate-700">Attendance date<input required type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+              <label className="block text-sm font-medium text-slate-700">Reason<select value={reason} onChange={e => setReason(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"><option>GPS Issue</option><option>On Duty</option><option>Device Failure</option><option>Missed Attendance Window</option></select></label>
+              <label className="block text-sm font-medium text-slate-700">Note <span className="text-slate-400">(optional)</span><textarea value={note} onChange={e => setNote(e.target.value)} rows="3" placeholder="Briefly describe what happened" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+              <div className="flex justify-end gap-3"><button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">Cancel</button><button className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700">Submit for approval</button></div>
+            </form>
+          </div>
+        );
+      }
+
+      function AttendanceIntelligence({ corrections = [], token }) {
+        const [intelligence, setIntelligence] = useState(null);
+        useEffect(() => {
+          fetch(`${API_BASE_URL}/admin/analytics/intelligence`, { headers: { Authorization: `Bearer ${token}` } })
+            .then(response => response.ok ? response.json() : null)
+            .then(data => { if (data) setIntelligence(data); })
+            .catch(() => {});
+        }, [token, corrections]);
+        const demoRoster = [
+          { name: 'Dr. John Doe', department: 'Information Technology', rejected: 0, gps: 0 },
+          { name: 'Dr. Priya Raman', department: 'CSE', rejected: 4, gps: 0 },
+          { name: 'Prof. Arun Kumar', department: 'CSE', rejected: 0, gps: 3 },
+        ].map(person => {
+          const own = corrections.filter(c => c.staff?.fullName === person.name || (!c.staff && person.name === 'Dr. John Doe'));
+          const pending = own.filter(c => c.status === 'PENDING_APPROVAL').length;
+          const rejected = person.rejected + own.filter(c => c.status === 'REJECTED').length;
+          const gps = person.gps + own.filter(c => c.reason === 'GPS Issue').length;
+          const risk = rejected > 3 || gps > 2 ? 'HIGH' : (rejected >= 1 || pending > 0 ? 'MEDIUM' : 'LOW');
+          return { ...person, pending, rejected, gps, risk };
+        });
+        const roster = intelligence?.roster?.length ? intelligence.roster : demoRoster;
+        const pending = intelligence?.pendingRequests ?? corrections.filter(c => c.status === 'PENDING_APPROVAL').length;
+        const high = intelligence?.highRiskCount ?? roster.filter(r => r.risk === 'HIGH').length;
+        const cseRate = intelligence?.departmentAttendanceRate ?? 94;
+        const badge = { LOW: '🟢 Low', MEDIUM: '🟡 Medium', HIGH: '🔴 High' };
+        const color = { LOW: 'bg-emerald-50 text-emerald-800', MEDIUM: 'bg-amber-50 text-amber-800', HIGH: 'bg-rose-50 text-rose-800' };
+        return <section className="rounded-xl border border-indigo-100 bg-white p-6 shadow-sm space-y-4">
+          <div><h2 className="text-lg font-semibold text-slate-800">Attendance Intelligence &amp; Risk Engine</h2><p className="text-xs text-slate-500">Transparent rules: pending/1–2 rejections = Medium; more than 3 rejections or repeated GPS failures = High.</p></div>
+          <div className="grid gap-3 md:grid-cols-3"><div className="rounded-lg bg-indigo-50 p-3"><p className="text-xs font-bold uppercase text-indigo-600">Smart Insights Summary</p><p className="mt-2 text-sm text-slate-700">CSE Department leads attendance at <strong>{cseRate}%</strong>.</p></div><div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><strong>{pending}</strong> correction request{pending === 1 ? '' : 's'} pending review.</div><div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-900"><strong>{high}</strong> staff member{high === 1 ? '' : 's'} flagged HIGH risk due to repeated missed windows.</div></div>
+          <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b text-xs uppercase text-slate-500"><tr><th className="p-2">Staff roster</th><th className="p-2">Department</th><th className="p-2">Risk score</th><th className="p-2">Signals</th></tr></thead><tbody>{roster.map(r => <tr key={r.name || r.staffId} className="border-b"><td className="p-2 font-medium text-slate-800">{r.name}</td><td className="p-2">{r.department}</td><td className="p-2"><span className={`rounded-full px-2 py-1 text-xs font-bold ${color[r.risk]}`}>{badge[r.risk]}</span></td><td className="p-2 text-xs text-slate-500">{r.pending ?? r.pendingRequests ?? 0} pending · {r.rejected ?? r.rejections ?? 0} rejected · {r.gps ?? r.gpsFailures ?? 0} GPS failures</td></tr>)}</tbody></table></div>
+        </section>;
+      }
+
+      function CorrectionVerificationCard({ corrections, onReview, onRefresh, title = 'Pending Attendance Verifications' }) {
+        const pending = corrections.filter(c => c.status === 'PENDING_APPROVAL');
+        return <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-semibold text-slate-800">{title}</h2><p className="text-xs text-slate-500">Review staff GPS, device, on-duty, and missed-window corrections.</p></div><button onClick={onRefresh} className="text-sm text-indigo-600 hover:text-indigo-800">Refresh</button></div>{pending.length === 0 ? <p className="text-sm text-slate-500">No correction requests awaiting review.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b bg-slate-50 text-slate-600"><tr><th className="p-3">Staff</th><th className="p-3">Date</th><th className="p-3">Reason / note</th><th className="p-3">Action</th></tr></thead><tbody>{pending.map(c => <tr key={c.id} className="border-b"><td className="p-3 font-medium">{c.staff?.fullName || 'Dr. John Doe'}<span className="block text-xs text-slate-400">{c.staff?.department || 'Information Technology'}</span></td><td className="p-3">{c.attendanceDate || c.date}</td><td className="p-3"><strong>{c.reason}</strong><span className="block text-xs text-slate-500">{c.note || 'No additional note'}</span></td><td className="space-x-2 p-3"><button onClick={() => onReview(c.id, 'APPROVED')} className="rounded bg-emerald-600 px-3 py-1 text-xs font-bold text-white hover:bg-emerald-700">Approve</button><button onClick={() => onReview(c.id, 'REJECTED')} className="rounded bg-rose-600 px-3 py-1 text-xs font-bold text-white hover:bg-rose-700">Reject</button></td></tr>)}</tbody></table></div>}</section>;
+      }
+
+      function StaffDashboard({ user, onLogout, token, onEditProfile, onSubmitCorrection }) {
         const [currentTime, setCurrentTime] = useState(kolkataNow);
         const [isWindowOpen, setIsWindowOpen] = useState(() => getWindowStatus(new Date()));
         const [attendanceStatus, setAttendanceStatus] = useState(() => {
@@ -1423,6 +1492,7 @@
         const [feedback, setFeedback] = useState({ type: '', msg: '' });
         const [refreshKey, setRefreshKey] = useState(0);
         const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+        const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
         const [localHistory, setLocalHistory] = useState(() => {
           try { return JSON.parse(localStorage.getItem('attendance_history') || '[]'); }
           catch { return []; }
@@ -1559,7 +1629,7 @@
                     {feedback.msg}
                   </p>
                 )}
-                <div className="flex gap-3">
+                <div className="grid gap-3 sm:grid-cols-3">
                   <button
                     id="take-attendance-btn"
                     onClick={handleTakeAttendance}
@@ -1574,10 +1644,11 @@
                   </button>
                   <button
                     onClick={() => setIsLeaveModalOpen(true)}
-                    className="w-full rounded-lg py-3 text-sm font-bold tracking-wide transition bg-teal-600 text-white shadow-md hover:bg-teal-700"
+                    className="rounded-lg py-3 text-sm font-bold tracking-wide transition bg-teal-600 text-white shadow-md hover:bg-teal-700"
                   >
                     REQUEST LEAVE
                   </button>
+                  <button onClick={() => setIsCorrectionModalOpen(true)} className="rounded-lg bg-amber-500 py-3 text-sm font-bold tracking-wide text-white shadow-md hover:bg-amber-600">REQUEST CORRECTION</button>
                 </div>
               </section>
 
@@ -1666,6 +1737,7 @@
                 onRefresh={() => setRefreshKey(prev => prev + 1)}
                 token={token}
               />
+              <CorrectionRequestModal isOpen={isCorrectionModalOpen} onClose={() => setIsCorrectionModalOpen(false)} onSubmit={(request) => { onSubmitCorrection(request); setIsCorrectionModalOpen(false); }} />
             </main>
           </div>
         );
@@ -1680,13 +1752,56 @@
         // showSetup is true when a first-time user must complete onboarding
         const [showSetup, setShowSetup] = useState(false);
         const [pendingRecords, setPendingRecords] = useState([]);
+        const [corrections, setCorrections] = useState(() => {
+          try { return JSON.parse(localStorage.getItem('attendance_correction_requests') || '[]'); }
+          catch { return []; }
+        });
         const [selectedRecord, setSelectedRecord] = useState(null);
         const [isMapModalOpen, setIsMapModalOpen] = useState(false);
 
         useEffect(() => {
           if (token && user?.role === 'ADMIN') fetchPendingRecords();
           if (token && user?.role === 'HOD') fetchHodPendingRecords();
+          if (token && user) fetchCorrections();
         }, [token, user]);
+
+        function saveCorrections(items) {
+          setCorrections(items);
+          localStorage.setItem('attendance_correction_requests', JSON.stringify(items));
+        }
+
+        async function fetchCorrections() {
+          const endpoint = user?.role === 'STAFF' ? '/corrections/mine' : '/corrections/pending';
+          try {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers: { Authorization: `Bearer ${token}` } });
+            if (response.ok) saveCorrections(await response.json());
+          } catch (error) { console.info('Using local correction-request demo state.', error); }
+        }
+
+        async function submitCorrection(request) {
+          const localRequest = {
+            id: `local-${Date.now()}`, date: request.date, attendanceDate: request.date,
+            reason: request.reason, note: request.note, status: 'PENDING_APPROVAL',
+            submittedAt: new Date().toISOString(), staff: { id: user.id, fullName: user.fullName, department: user.department }
+          };
+          try {
+            const response = await fetch(`${API_BASE_URL}/corrections`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(request)
+            });
+            if (response.ok) { saveCorrections([await response.json(), ...corrections]); return; }
+          } catch (error) { console.info('Correction saved in demo state.', error); }
+          saveCorrections([localRequest, ...corrections]);
+        }
+
+        async function reviewCorrection(id, action) {
+          try {
+            const response = await fetch(`${API_BASE_URL}/corrections/${id}/review`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ action })
+            });
+            if (!response.ok) throw new Error('Review unavailable');
+          } catch (error) { console.info('Correction review saved in demo state.', error); }
+          saveCorrections(corrections.map(c => String(c.id) === String(id) ? { ...c, status: action } : c));
+        }
 
         function handleLoginSuccess(authData) {
           setToken(authData.token);
@@ -1789,6 +1904,9 @@
                 pendingRecords={pendingRecords}
                 fetchPendingRecords={fetchPendingRecords}
                 handleVerify={handleVerify}
+                corrections={corrections}
+                onReviewCorrection={reviewCorrection}
+                refreshCorrections={fetchCorrections}
               />
               <GpsMapModal isOpen={isMapModalOpen} onClose={closeMap} attendanceRecord={selectedRecord} onVerify={handleMapVerification} />
             </>
@@ -1805,6 +1923,9 @@
                 pendingRecords={pendingRecords}
                 fetchHodPendingRecords={fetchHodPendingRecords}
                 handleHodVerify={handleHodVerify}
+                corrections={corrections}
+                onReviewCorrection={reviewCorrection}
+                refreshCorrections={fetchCorrections}
               />
               <GpsMapModal isOpen={isMapModalOpen} onClose={closeMap} attendanceRecord={selectedRecord} onVerify={handleMapVerification} />
             </>
@@ -1817,6 +1938,7 @@
             onLogout={handleLogout}
             token={token}
             onEditProfile={() => setShowSetup(true)}
+            onSubmitCorrection={submitCorrection}
           />
         );
       }

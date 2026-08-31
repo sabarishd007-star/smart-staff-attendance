@@ -27,7 +27,22 @@ CREATE TABLE IF NOT EXISTS attendance (
     UNIQUE KEY unique_staff_daily_attendance (staff_id, date) -- Prevents duplicate daily checks
 );
 
--- 3. Immutable Audit Log
+-- 3. Staff correction workflow for missed/GPS-failed attendance
+CREATE TABLE IF NOT EXISTS attendance_correction_requests (
+    correction_request_id INT PRIMARY KEY AUTO_INCREMENT,
+    staff_id INT NOT NULL,
+    attendance_date DATE NOT NULL,
+    reason VARCHAR(40) NOT NULL,
+    note VARCHAR(1000),
+    status VARCHAR(25) NOT NULL DEFAULT 'PENDING_APPROVAL',
+    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TIMESTAMP NULL,
+    reviewed_by INT NULL,
+    FOREIGN KEY (staff_id) REFERENCES staff(staff_id) ON DELETE CASCADE,
+    FOREIGN KEY (reviewed_by) REFERENCES staff(staff_id) ON DELETE SET NULL
+);
+
+-- 4. Immutable Audit Log
 CREATE TABLE IF NOT EXISTS audit_log (
     audit_id INT PRIMARY KEY AUTO_INCREMENT,
     attendance_id INT NOT NULL,
