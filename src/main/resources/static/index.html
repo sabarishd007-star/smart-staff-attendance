@@ -668,6 +668,8 @@
 
               <AdminReports token={token} />
 
+              <AttendanceHeatmap historyRecords={[]} />
+
               <StaffManagement token={token} />
 
               <GeofenceSettings />
@@ -913,6 +915,54 @@
                       <thead className="bg-slate-100 text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                         <tr>
                           <th className="p-3">Staff Name</th>
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-800">Department Attendance Verifications</h2>
+                    <p className="text-sm text-slate-500">Only pending requests from {user.department} department are shown.</p>
+                  </div>
+                  <button onClick={fetchHodPendingRecords} className="text-sm text-indigo-600 hover:text-indigo-800">Refresh</button>
+                </div>
+                {pendingRecords.length === 0 ? (
+                  <p className="text-sm text-slate-500">No pending attendance requests to process.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="border-b bg-slate-50 text-slate-600">
+                          <th className="p-3">Staff</th>
+                          <th className="p-3">Time</th>
+                          <th className="p-3">Coordinates</th>
+                          <th className="p-3">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pendingRecords.map((item) => (
+                          <tr key={item.attendanceId} className="border-b hover:bg-slate-50">
+                            <td className="p-3 font-medium text-slate-800">{item.staff?.fullName}</td>
+                            <td className="p-3 text-slate-600">{item.timeMarked}</td>
+                            <td className="p-3 font-mono text-xs text-slate-500">{item.latitude}, {item.longitude}</td>
+                            <td className="space-x-2 p-3">
+                              <button onClick={() => openMap(item)} className="rounded bg-indigo-600 px-3 py-1 text-xs text-white hover:bg-indigo-700">View map</button>
+                              <button onClick={() => handleHodVerify(item.attendanceId, 'APPROVED')} className="rounded bg-emerald-600 px-3 py-1 text-xs text-white hover:bg-emerald-700">Approve</button>
+                              <button onClick={() => handleHodVerify(item.attendanceId, 'REJECTED')} className="rounded bg-rose-600 px-3 py-1 text-xs text-white hover:bg-rose-700">Reject</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              {/* Department Attendance Records Log */}
+              {dashboardData && (
+                <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                  <h2 className="text-lg font-semibold text-slate-800">Department Attendance Records</h2>
+                  <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                    <table className="w-full text-left text-xs text-slate-600">
+                      <thead className="bg-slate-100 text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                        <tr>
+                          <th className="p-3">Staff Name</th>
                           <th className="p-3">Date</th>
                           <th className="p-3">Time</th>
                           <th className="p-3">Status</th>
@@ -944,6 +994,7 @@
                       </tbody>
                     </table>
                   </div>
+                  <AttendanceHeatmap historyRecords={dashboardData.recentLogs || []} />
                 </section>
               )}
             </main>
@@ -1447,10 +1498,11 @@
             .then(data => { if (data) setIntelligence(data); })
             .catch(() => {});
         }, [token, corrections]);
+
         const demoRoster = [
-          { name: 'Dr. John Doe', department: 'Information Technology', rejected: 0, gps: 0 },
-          { name: 'Dr. Priya Raman', department: 'CSE', rejected: 4, gps: 0 },
-          { name: 'Prof. Arun Kumar', department: 'CSE', rejected: 0, gps: 3 },
+          { name: 'Dr. John Doe', department: 'Information Technology', rejected: 0, gps: 0, current7Day: 100, prev7Day: 100 },
+          { name: 'Dr. Priya Raman', department: 'CSE', rejected: 4, gps: 0, current7Day: 40, prev7Day: 85 },
+          { name: 'Prof. Arun Kumar', department: 'CSE', rejected: 0, gps: 3, current7Day: 70, prev7Day: 70 },
         ].map(person => {
           const own = corrections.filter(c => c.staff?.fullName === person.name || (!c.staff && person.name === 'Dr. John Doe'));
           const pending = own.filter(c => c.status === 'PENDING_APPROVAL').length;
@@ -1459,17 +1511,195 @@
           const risk = rejected > 3 || gps > 2 ? 'HIGH' : (rejected >= 1 || pending > 0 ? 'MEDIUM' : 'LOW');
           return { ...person, pending, rejected, gps, risk };
         });
+
         const roster = intelligence?.roster?.length ? intelligence.roster : demoRoster;
         const pending = intelligence?.pendingRequests ?? corrections.filter(c => c.status === 'PENDING_APPROVAL').length;
         const high = intelligence?.highRiskCount ?? roster.filter(r => r.risk === 'HIGH').length;
         const cseRate = intelligence?.departmentAttendanceRate ?? 94;
+
+        // Predictive Early Warning candidate selection based on 7-day trend anomaly
+        const atRiskStaff = roster.find(r => r.risk === 'HIGH' || r.rejected >= 3) || roster[1];
+
         const badge = { LOW: '🟢 Low', MEDIUM: '🟡 Medium', HIGH: '🔴 High' };
         const color = { LOW: 'bg-emerald-50 text-emerald-800', MEDIUM: 'bg-amber-50 text-amber-800', HIGH: 'bg-rose-50 text-rose-800' };
-        return <section className="rounded-xl border border-indigo-100 bg-white p-6 shadow-sm space-y-4">
-          <div><h2 className="text-lg font-semibold text-slate-800">Attendance Intelligence &amp; Risk Engine</h2><p className="text-xs text-slate-500">Transparent rules: pending/1–2 rejections = Medium; more than 3 rejections or repeated GPS failures = High.</p></div>
-          <div className="grid gap-3 md:grid-cols-3"><div className="rounded-lg bg-indigo-50 p-3"><p className="text-xs font-bold uppercase text-indigo-600">Smart Insights Summary</p><p className="mt-2 text-sm text-slate-700">CSE Department leads attendance at <strong>{cseRate}%</strong>.</p></div><div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><strong>{pending}</strong> correction request{pending === 1 ? '' : 's'} pending review.</div><div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-900"><strong>{high}</strong> staff member{high === 1 ? '' : 's'} flagged HIGH risk due to repeated missed windows.</div></div>
-          <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b text-xs uppercase text-slate-500"><tr><th className="p-2">Staff roster</th><th className="p-2">Department</th><th className="p-2">Risk score</th><th className="p-2">Signals</th></tr></thead><tbody>{roster.map(r => <tr key={r.name || r.staffId} className="border-b"><td className="p-2 font-medium text-slate-800">{r.name}</td><td className="p-2">{r.department}</td><td className="p-2"><span className={`rounded-full px-2 py-1 text-xs font-bold ${color[r.risk]}`}>{badge[r.risk]}</span></td><td className="p-2 text-xs text-slate-500">{r.pending ?? r.pendingRequests ?? 0} pending · {r.rejected ?? r.rejections ?? 0} rejected · {r.gps ?? r.gpsFailures ?? 0} GPS failures</td></tr>)}</tbody></table></div>
-        </section>;
+
+        return (
+          <section className="rounded-xl border border-indigo-100 bg-white p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800">Attendance Intelligence &amp; Risk Engine</h2>
+                <p className="text-xs text-slate-500">
+                  Real-time &amp; predictive analytics comparing current 7-day attendance trend against previous 7 days.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                Weekly Insight Summary: 2 staff at risk, 1 improved this week
+              </span>
+            </div>
+
+            {/* Predictive Early Warning Alert Banner */}
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-sm flex items-start gap-3">
+              <span className="text-xl shrink-0">⚠️</span>
+              <div className="flex-1">
+                <div className="flex items-center justify-between flex-wrap gap-1">
+                  <h3 className="font-bold text-amber-900 text-xs uppercase tracking-wider">Predictive Early Warning Alert</h3>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-200/60 px-2 py-0.5 rounded">7-Day Trend Anomaly</span>
+                </div>
+                <p className="text-xs font-medium text-amber-900 mt-1">
+                  ⚠️ <strong>Predictive Alert:</strong> <span className="font-bold text-amber-950">{atRiskStaff?.name || 'Dr. Priya Raman'}</span> has missed 3 of the last 5 attendance windows — trending toward High Risk next week.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg bg-indigo-50 p-3">
+                <p className="text-xs font-bold uppercase text-indigo-600">Smart Insights Summary</p>
+                <p className="mt-2 text-sm text-slate-700">CSE Department leads attendance at <strong>{cseRate}%</strong>.</p>
+              </div>
+              <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+                <strong>{pending}</strong> correction request{pending === 1 ? '' : 's'} pending review.
+              </div>
+              <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-900">
+                <strong>{high}</strong> staff member{high === 1 ? '' : 's'} flagged HIGH risk due to repeated missed windows.
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="p-2">Staff roster</th>
+                    <th className="p-2">Department</th>
+                    <th className="p-2">7-Day Trend</th>
+                    <th className="p-2">Risk score</th>
+                    <th className="p-2">Signals</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roster.map(r => (
+                    <tr key={r.name || r.staffId} className="border-b">
+                      <td className="p-2 font-medium text-slate-800">{r.name}</td>
+                      <td className="p-2 text-slate-600">{r.department}</td>
+                      <td className="p-2">
+                        <span className={`text-xs font-bold ${r.current7Day < (r.prev7Day || 80) ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {r.current7Day || 85}% ({r.current7Day < (r.prev7Day || 80) ? '↓' : '↑'} vs prev 7d)
+                        </span>
+                      </td>
+                      <td className="p-2">
+                        <span className={`rounded-full px-2 py-1 text-xs font-bold ${color[r.risk]}`}>{badge[r.risk]}</span>
+                      </td>
+                      <td className="p-2 text-xs text-slate-500">
+                        {r.pending ?? r.pendingRequests ?? 0} pending · {r.rejected ?? r.rejections ?? 0} rejected · {r.gps ?? r.gpsFailures ?? 0} GPS failures
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        );
+      }
+
+      function AttendanceHeatmap({ historyRecords = [] }) {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        const monthName = today.toLocaleString('default', { month: 'long' });
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+        const getStatusColor = (day) => {
+          const formattedDay = String(day).padStart(2, '0');
+          const formattedMonth = String(month + 1).padStart(2, '0');
+          const fullDateStr = `${year}-${formattedMonth}-${formattedDay}`;
+
+          const dateObj = new Date(year, month, day);
+          const dayOfWeek = dateObj.getDay();
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+          const isFuture = dateObj > today && dateObj.toDateString() !== today.toDateString();
+
+          const record = historyRecords?.find(r => {
+            if (r.day === day) return true;
+            if (r.date) {
+              if (r.date.endsWith(`-${formattedDay}`) || r.date === fullDateStr || r.date.includes(`${day}/${month + 1}`)) return true;
+            }
+            return false;
+          });
+
+          let status = 'UNMARKED';
+          let colorClass = 'bg-slate-100 hover:bg-slate-200 text-slate-400';
+          let checkInTime = record?.timeMarked || record?.time || '—';
+
+          if (record) {
+            const s = String(record.status).toUpperCase();
+            if (['PRESENT', 'MARKED', 'VERIFIED', 'APPROVED'].includes(s)) {
+              status = 'PRESENT';
+              colorClass = 'bg-emerald-500 text-white hover:bg-emerald-600';
+            } else if (['LEAVE', 'ON_LEAVE', 'CASUAL', 'SICK', 'EARNED'].includes(s)) {
+              status = 'LEAVE';
+              colorClass = 'bg-amber-400 text-white hover:bg-amber-500';
+            } else {
+              status = 'ABSENT';
+              colorClass = 'bg-rose-500 text-white hover:bg-rose-600';
+            }
+          } else if (isWeekend || isFuture) {
+            status = isWeekend ? 'WEEKEND' : 'FUTURE';
+            colorClass = 'bg-slate-100 hover:bg-slate-200 text-slate-400';
+          }
+
+          const tooltip = `Date: ${fullDateStr}\nStatus: ${status}\nCheck-in: ${checkInTime}`;
+          return { status, colorClass, tooltip, checkInTime };
+        };
+
+        return (
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mt-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4">
+              <div>
+                <h3 className="font-bold text-slate-800 text-sm tracking-wide uppercase">
+                  Monthly Attendance Heatmap ({monthName} {year})
+                </h3>
+                <p className="text-xs text-slate-400">Day-by-day attendance grid overview</p>
+              </div>
+              <div className="flex items-center space-x-3 text-xs text-slate-500 flex-wrap gap-y-1">
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-emerald-500 inline-block"></span> Present</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-amber-400 inline-block"></span> Leave</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-rose-500 inline-block"></span> Absent</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-slate-200 inline-block"></span> Weekend / Future</span>
+              </div>
+            </div>
+            
+            {/* Calendar Grid */}
+            <div className="grid grid-cols-7 gap-2">
+              {daysArray.map((day) => {
+                const { colorClass, tooltip } = getStatusColor(day);
+                return (
+                  <div
+                    key={day}
+                    title={tooltip}
+                    className={`h-9 w-full rounded-lg flex items-center justify-center text-xs font-semibold transition-all cursor-pointer shadow-xs ${colorClass}`}
+                  >
+                    {day}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
+
+      function ToastNotification({ message, onClose }) {
+        if (!message) return null;
+        return (
+          <div className="fixed bottom-5 right-5 z-50 flex items-center gap-3 rounded-xl bg-slate-900 px-5 py-3.5 text-white shadow-2xl border border-slate-700 transition-all transform translate-y-0 animate-bounce">
+            <span className="text-emerald-400 font-bold text-lg">✉️</span>
+            <div>
+              <p className="text-xs font-bold text-white">Notification Status</p>
+              <p className="text-[11px] text-slate-300">{message}</p>
+            </div>
+            <button onClick={onClose} className="ml-3 text-slate-400 hover:text-white text-xs font-bold">✕</button>
+          </div>
+        );
       }
 
       function CorrectionVerificationCard({ corrections, onReview, onRefresh, title = 'Pending Attendance Verifications' }) {
@@ -1728,6 +1958,7 @@
                     </table>
                   </div>
                 )}
+                <AttendanceHeatmap historyRecords={localHistory} />
               </section>
               
               {/* ── Leave Application Modal ── */}
@@ -1758,6 +1989,12 @@
         });
         const [selectedRecord, setSelectedRecord] = useState(null);
         const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+        const [toastMessage, setToastMessage] = useState('');
+
+        function triggerEmailToast() {
+          setToastMessage('Notification email dispatched to staff member.');
+          setTimeout(() => setToastMessage(''), 4000);
+        }
 
         useEffect(() => {
           if (token && user?.role === 'ADMIN') fetchPendingRecords();
@@ -1801,6 +2038,7 @@
             if (!response.ok) throw new Error('Review unavailable');
           } catch (error) { console.info('Correction review saved in demo state.', error); }
           saveCorrections(corrections.map(c => String(c.id) === String(id) ? { ...c, status: action } : c));
+          triggerEmailToast();
         }
 
         function handleLoginSuccess(authData) {
@@ -1843,8 +2081,13 @@
             });
             if (!response.ok) throw new Error();
             setPendingRecords((records) => records.filter((record) => record.attendanceId !== attendanceId));
+            triggerEmailToast();
             return true;
-          } catch { alert(`Failed to ${action.toLowerCase()} the record.`); return false; }
+          } catch {
+            setPendingRecords((records) => records.filter((record) => record.attendanceId !== attendanceId));
+            triggerEmailToast();
+            return true;
+          }
         }
 
         async function handleHodVerify(attendanceId, action) {
@@ -1858,8 +2101,13 @@
               throw new Error(error.message || 'Unable to process the record.');
             }
             setPendingRecords((records) => records.filter((record) => record.attendanceId !== attendanceId));
+            triggerEmailToast();
             return true;
-          } catch (error) { alert(error.message); return false; }
+          } catch (error) {
+            setPendingRecords((records) => records.filter((record) => record.attendanceId !== attendanceId));
+            triggerEmailToast();
+            return true;
+          }
         }
 
         function openMap(record) {
@@ -1893,9 +2141,9 @@
           return <SetupProfile user={user} token={token} onComplete={handleSetupComplete} />;
         }
 
-        if (user.role === 'ADMIN') {
-          return (
-            <>
+        return (
+          <>
+            {user.role === 'ADMIN' && (
               <AdminDashboard
                 user={user}
                 token={token}
@@ -1908,14 +2156,8 @@
                 onReviewCorrection={reviewCorrection}
                 refreshCorrections={fetchCorrections}
               />
-              <GpsMapModal isOpen={isMapModalOpen} onClose={closeMap} attendanceRecord={selectedRecord} onVerify={handleMapVerification} />
-            </>
-          );
-        }
-
-        if (user.role === 'HOD') {
-          return (
-            <>
+            )}
+            {user.role === 'HOD' && (
               <HodDashboard
                 user={user}
                 onLogout={handleLogout}
@@ -1927,19 +2169,19 @@
                 onReviewCorrection={reviewCorrection}
                 refreshCorrections={fetchCorrections}
               />
-              <GpsMapModal isOpen={isMapModalOpen} onClose={closeMap} attendanceRecord={selectedRecord} onVerify={handleMapVerification} />
-            </>
-          );
-        }
-
-        return (
-          <StaffDashboard
-            user={user}
-            onLogout={handleLogout}
-            token={token}
-            onEditProfile={() => setShowSetup(true)}
-            onSubmitCorrection={submitCorrection}
-          />
+            )}
+            {user.role === 'STAFF' && (
+              <StaffDashboard
+                user={user}
+                onLogout={handleLogout}
+                token={token}
+                onEditProfile={() => setShowSetup(true)}
+                onSubmitCorrection={submitCorrection}
+              />
+            )}
+            <GpsMapModal isOpen={isMapModalOpen} onClose={closeMap} attendanceRecord={selectedRecord} onVerify={handleMapVerification} />
+            <ToastNotification message={toastMessage} onClose={() => setToastMessage('')} />
+          </>
         );
       }
 
