@@ -966,6 +966,9 @@
                           <th className="p-3">Date</th>
                           <th className="p-3">Time</th>
                           <th className="p-3">Status</th>
+                          <th className="p-3">Auth method</th>
+                          <th className="p-3">Confidence</th>
+                          <th className="p-3">Tamper hash</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 bg-white">
@@ -1490,6 +1493,65 @@
         );
       }
 
+      // Demonstration-only biometric experience. It does not identify a person or replace real biometric hardware.
+      function BiometricVerificationModal({ isOpen, onClose, onVerificationSuccess }) {
+        const [activeTab, setActiveTab] = useState('FACE_IRIS');
+        const [isScanning, setIsScanning] = useState(false);
+        const [scanProgress, setScanProgress] = useState(0);
+        const [statusMessage, setStatusMessage] = useState('Ready for a simulated biometric scan');
+        const videoRef = useRef(null);
+
+        useEffect(() => {
+          let stream;
+          if (isOpen && activeTab === 'FACE_IRIS' && navigator.mediaDevices?.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: true }).then((cameraStream) => {
+              stream = cameraStream;
+              if (videoRef.current) videoRef.current.srcObject = stream;
+            }).catch(() => setStatusMessage('Webcam access unavailable — simulation mode is active.'));
+          }
+          return () => stream?.getTracks().forEach(track => track.stop());
+        }, [isOpen, activeTab]);
+
+        if (!isOpen) return null;
+
+        async function sha256(message) {
+          if (!window.crypto?.subtle) return `demo-${Date.now().toString(16)}`;
+          const bytes = new TextEncoder().encode(message);
+          const hash = await window.crypto.subtle.digest('SHA-256', bytes);
+          return Array.from(new Uint8Array(hash)).map(value => value.toString(16).padStart(2, '0')).join('');
+        }
+
+        function startScan() {
+          setIsScanning(true); setScanProgress(0); setStatusMessage('Checking liveness telemetry…');
+          let progress = 0;
+          const timer = setInterval(async () => {
+            progress += 20; setScanProgress(progress);
+            if (progress === 40) setStatusMessage('Simulating face / iris signature match…');
+            if (progress === 80) setStatusMessage('Creating tamper-evident audit seal…');
+            if (progress < 100) return;
+            clearInterval(timer);
+            const confidence = (94.5 + Math.random() * 5).toFixed(1);
+            const timestamp = new Date().toISOString();
+            const deviceFingerprint = `DEV-${Math.random().toString(36).slice(2, 9).toUpperCase()}`;
+            const fullHash = await sha256(`${activeTab}|${confidence}|true|${timestamp}|${deviceFingerprint}`);
+            onVerificationSuccess({
+              authMethod: activeTab, method: activeTab, confidence: `${confidence}%`, livenessResult: 'PASSED (simulation)',
+              deviceFingerprint, securityHash: `${fullHash.slice(0, 24)}…`, fullHash, timestamp
+            });
+            setIsScanning(false); onClose();
+          }, 400);
+        }
+
+        return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="biometric-title">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 text-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950 p-4"><div className="flex items-center gap-2"><span className="h-3 w-3 animate-pulse rounded-full bg-emerald-500"></span><h3 id="biometric-title" className="text-sm font-bold uppercase tracking-wide text-slate-200">Biometric verification</h3></div><button onClick={onClose} disabled={isScanning} className="text-slate-400 hover:text-white">✕</button></div>
+            <div className="flex border-b border-slate-800"><button onClick={() => setActiveTab('FACE_IRIS')} className={`flex-1 border-b-2 py-2.5 text-xs font-semibold ${activeTab === 'FACE_IRIS' ? 'border-indigo-500 bg-slate-800/40 text-indigo-300' : 'border-transparent text-slate-400'}`}>📷 Face + Iris</button><button onClick={() => setActiveTab('FINGERPRINT')} className={`flex-1 border-b-2 py-2.5 text-xs font-semibold ${activeTab === 'FINGERPRINT' ? 'border-indigo-500 bg-slate-800/40 text-indigo-300' : 'border-transparent text-slate-400'}`}>👆 Fingerprint</button></div>
+            <div className="flex flex-col items-center p-6">{activeTab === 'FACE_IRIS' ? <div className="relative flex h-48 w-48 items-center justify-center overflow-hidden rounded-full border-2 border-indigo-500/50 bg-slate-950"><video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover"/><div className="absolute inset-2 rounded-full border-2 border-dashed border-indigo-400/50"></div>{isScanning && <div className="absolute inset-x-0 h-1 animate-bounce bg-indigo-300 shadow-[0_0_15px_#818cf8]"></div>}</div> : <div className="flex h-48 w-48 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 text-6xl">{isScanning ? '🖐️' : '☝️'}</div>}<p className="mt-4 text-center text-xs font-medium text-slate-300">{statusMessage}</p>{isScanning && <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-800"><div className="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 transition-all" style={{ width: `${scanProgress}%` }}></div></div>}<button onClick={startScan} disabled={isScanning} className="mt-6 w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-bold uppercase tracking-wider hover:bg-indigo-500 disabled:opacity-50">{isScanning ? 'Verifying telemetry…' : 'Start scan & mark attendance'}</button></div>
+            <div className="flex justify-between border-t border-slate-800 bg-slate-950 px-4 py-3 text-[10px] text-slate-500"><span>🔒 SHA-256 audit seal</span><span>Simulation mode</span></div>
+          </div>
+        </div>;
+      }
+
       function AttendanceIntelligence({ corrections = [], token }) {
         const [intelligence, setIntelligence] = useState(null);
         useEffect(() => {
@@ -1723,6 +1785,7 @@
         const [refreshKey, setRefreshKey] = useState(0);
         const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
         const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
+        const [isBiometricModalOpen, setIsBiometricModalOpen] = useState(false);
         const [localHistory, setLocalHistory] = useState(() => {
           try { return JSON.parse(localStorage.getItem('attendance_history') || '[]'); }
           catch { return []; }
@@ -1739,7 +1802,7 @@
           return () => clearInterval(timer);
         }, []);
 
-        function handleTakeAttendance() {
+        function handleTakeAttendance(biometric = null) {
           setFeedback({ type: '', msg: '' });
           if (!navigator.geolocation) {
             setFeedback({ type: 'error', msg: 'Geolocation is not supported by your browser.' });
@@ -1759,7 +1822,16 @@
                 const newEntry = {
                   date: today,
                   time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-                  status: 'PRESENT'
+                  status: 'PRESENT',
+                  authMethod: biometric?.authMethod || biometric?.method || 'GPS_ONLY',
+                  method: biometric?.authMethod || biometric?.method || 'GPS_ONLY',
+                  confidence: biometric?.confidence || '—',
+                  livenessResult: biometric?.livenessResult || 'Not applicable',
+                  securityHash: biometric?.securityHash || '—',
+                  fullHash: biometric?.fullHash || null,
+                  deviceFingerprint: biometric?.deviceFingerprint || 'Browser GPS',
+                  latitude: coords.latitude,
+                  longitude: coords.longitude
                 };
                 const existing = JSON.parse(localStorage.getItem('attendance_history') || '[]');
                 const alreadyMarked = existing.some(e => e.date === today);
@@ -1769,7 +1841,7 @@
                   setLocalHistory(updated);
                 }
 
-                setFeedback({ type: 'success', msg: 'Attendance marked successfully (saved locally).' });
+                setFeedback({ type: 'success', msg: `Attendance marked with ${biometric?.method === 'FACE_IRIS' ? 'Face + Iris' : biometric?.method === 'FINGERPRINT' ? 'Fingerprint' : 'GPS'} verification (saved locally).` });
                 setRefreshKey((prev) => prev + 1);
               } catch (error) {
                 setFeedback({ type: 'error', msg: error.message });
@@ -1783,6 +1855,15 @@
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
           );
+        }
+
+        function beginAttendance() {
+          setFeedback({ type: '', msg: '' });
+          if (!isWindowOpen) {
+            setFeedback({ type: 'error', msg: 'The attendance window is currently closed. Use Request Correction if needed.' });
+            return;
+          }
+          setIsBiometricModalOpen(true);
         }
 
         const disabled = !isWindowOpen || attendanceStatus !== 'NOT MARKED' || gpsLoading;
@@ -1862,7 +1943,7 @@
                 <div className="grid gap-3 sm:grid-cols-3">
                   <button
                     id="take-attendance-btn"
-                    onClick={handleTakeAttendance}
+                    onClick={beginAttendance}
                     disabled={disabled}
                     className={`w-full rounded-lg py-3 text-sm font-bold tracking-wide transition ${
                       disabled
@@ -1938,6 +2019,9 @@
                           <th className="p-3">Date</th>
                           <th className="p-3">Time</th>
                           <th className="p-3">Status</th>
+                          <th className="p-3">Auth Method</th>
+                          <th className="p-3">Confidence</th>
+                          <th className="p-3">Tamper Hash</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 bg-white">
@@ -1952,6 +2036,9 @@
                                 'bg-rose-100 text-rose-800'
                               }`}>{rec.status}</span>
                             </td>
+                            <td className="p-3"><span className="rounded bg-indigo-50 px-2 py-0.5 font-semibold text-indigo-700">{rec.authMethod || rec.method || 'GPS_ONLY'}</span>{String(rec.livenessResult || '').startsWith('PASSED') && <span className="mt-1 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">PASSED</span>}</td>
+                            <td className="p-3 font-semibold text-slate-600">{rec.confidence || '—'}</td>
+                            <td className="p-3 font-mono text-[10px] text-slate-500" title={rec.fullHash || rec.securityHash}>{rec.securityHash || '—'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1969,6 +2056,7 @@
                 token={token}
               />
               <CorrectionRequestModal isOpen={isCorrectionModalOpen} onClose={() => setIsCorrectionModalOpen(false)} onSubmit={(request) => { onSubmitCorrection(request); setIsCorrectionModalOpen(false); }} />
+              <BiometricVerificationModal isOpen={isBiometricModalOpen} onClose={() => setIsBiometricModalOpen(false)} onVerificationSuccess={handleTakeAttendance} />
             </main>
           </div>
         );
