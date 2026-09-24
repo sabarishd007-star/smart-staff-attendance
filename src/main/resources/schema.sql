@@ -53,3 +53,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
     FOREIGN KEY (attendance_id) REFERENCES attendance(attendance_id),
     FOREIGN KEY (performed_by) REFERENCES staff(staff_id)
 );
+
+-- 5. Skin Analysis Diagnostic Records
+CREATE TABLE IF NOT EXISTS skin_analysis_record (
+    record_id INT PRIMARY KEY AUTO_INCREMENT,
+    staff_id INT NOT NULL,
+    acne_score DOUBLE NULL,
+    pore_score DOUBLE NULL,
+    texture_score DOUBLE NULL,
+    dark_circle_score DOUBLE NULL,
+    pigmentation_score DOUBLE NULL,
+    hydration_score DOUBLE NULL,
+    raw_analysis_json TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (staff_id) REFERENCES staff(staff_id) ON DELETE CASCADE
+);

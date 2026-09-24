@@ -52,7 +52,7 @@ public class SecurityConfig {
                         "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; " +
                         "img-src 'self' data: https: blob:; " +
                         "font-src 'self' https://unpkg.com data:; " +
-                        "connect-src 'self' http://localhost:8080 https://vitalscan-api-y891.onrender.com https:; " +
+                        "connect-src 'self' http://localhost:8080 http://localhost:8001 https://vitalscan-api-y891.onrender.com https:; " +
                         "frame-src 'self' https:; " +
                         "object-src 'none'; " +
                         "base-uri 'self'; " +
@@ -70,6 +70,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/hod/**", "/v1/hod/**").hasAnyRole("HOD", "ADMIN")
                 .requestMatchers("/api/v1/attendance/**", "/v1/attendance/**").hasAnyRole("STAFF", "HOD", "ADMIN")
                 .requestMatchers("/api/v1/leave/**", "/v1/leave/**").hasAnyRole("STAFF", "HOD", "ADMIN")
+                .requestMatchers("/api/v1/skin/**", "/v1/skin/**").authenticated()
                 .requestMatchers("/api/v1/staff/**", "/v1/staff/**", "/api/v1/notifications/**", "/v1/notifications/**").authenticated()
                 .anyRequest().authenticated()
             )
