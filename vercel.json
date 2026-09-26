@@ -1,8 +1,9 @@
 {
+  "outputDirectory": "src/main/resources/static",
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/src/main/resources/static/$1"
+      "destination": "/index.html"
     }
   ]
 }
